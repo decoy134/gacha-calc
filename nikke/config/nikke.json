@@ -1,0 +1,106 @@
+{
+    "$schema": "http://json-schema.org/schema",
+    "nikkes": {
+        "Scarlet": {
+            "element": "electric",
+            "max_health": 123456,
+            "attack": 40221,
+            "defense": 6000,
+            "ammo": 20,
+            "normal": 27.08,
+            "skill_1": {
+                "type": "stacking_buff",
+                "target": "self",
+                "stack": 5,
+                "effect": {
+                    "type": "buff",
+                    "health": -4.01,
+                    "attack": 23.15,
+                    "duration": 5
+                }
+            },
+            "skill_2": {
+            },
+            "burst": {
+                "type": "conditional_buff",
+                "target": "self",
+                "crit_rate": 17.12,
+                "conditions": {
+                    "less": {
+                        "health": 50
+                    }
+                },
+                "effect": [
+                    {
+                        "type": "buff",
+                        "crit_rate": 17.12,
+                        "duration": 10
+                    },
+                    {
+                        "type": "initial_damage",
+                        "target": "enemies",
+                        "damage": 743
+                    }
+                ]
+            }
+        },
+       "Liter": {
+            "element": "iron",
+            "max_health": 943175,
+            "attack": 40221,
+            "defense": 6433,
+            "role": "attacker",
+            "manufacturer": "pilgrim",
+            "weapon": "AR",
+            "ammo": 20,
+            "reload": 2.3,
+            "normal": 27.08,
+            "skill_1": {
+                "type": "ramping_buff",
+                "target": "allies",
+                "effect": [
+                    {
+                        "type": "buff",
+                        "ammo": 45.17,
+                        "duration": 5
+                    },
+                    {
+                        "type": "buff",
+                        "crit_dmg": 12.46,
+                        "duration": 5
+                    },
+                    {
+                        "type": "buff",
+                        "attack": 14.42,
+                        "duration": 5
+                    }
+                ]
+            },
+            "skill_2": {
+            },
+            "burst": {
+                "type": "buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "attack": 66,
+                    "duration": 5
+                }
+            }
+        }
+    },
+    "enemies": {
+        "shooting_range": {
+            "health": 10000000,
+            "attack": 0,
+            "defense": 100,
+            "element": "fire"
+        },
+        "special_interception": {
+            "health": 62000000,
+            "attack": 65536,
+            "defense": 13121,
+            "element": null
+        }
+    }
+}
