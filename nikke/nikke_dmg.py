@@ -109,6 +109,49 @@ class Graphs:
             """Sets the maximum value of the x-axis for this plot."""
             self.extent = [min_x, max_x, min_y, max_y]
 
+    class ScatterPlot:
+        """Create a scatter plot with a line through it."""
+        def __init__(self, title: str):
+            plt.style.use('classic')
+            self.fig, self.axes = plt.subplots(nrows=1, ncols=1)
+            self.axes.minorticks_on()
+            self.axes.grid(visible=True,
+                which='major',
+                linestyle='-',
+                linewidth='0.5',
+                color='red')
+            self.axes.grid(visible=True,
+                which='minor',
+                linestyle=':',
+                linewidth='0.5',
+                color='black')
+            self.set_title(title)
+            self.set_xlabel('X-Axis')
+            self.set_ylabel('Y-Axis')
+            self.extent = None
+            self.pos = None
+
+        def draw_line(self, data: np.array, color: str='g'):
+            """Draws a line in the color plot, using a Nx2 numpy array."""
+            self.axes.plot(data[:,0], data[:,1], color=color)
+
+        def set_title(self, title: str):
+            """Sets the title of this plot."""
+            self.title = title
+            self.axes.set_title(self.title)
+
+        def set_xlabel(self, label: str):
+            """Sets the name of the x-axis for this plot."""
+            self.axes.set_xlabel(label)
+
+        def set_ylabel(self, label: str):
+            """Sets the name of the y-axis for this plot."""
+            self.axes.set_ylabel(label)
+
+        def set_bounds(self, min_x: float, max_x: float, min_y: float, max_y: float):
+            """Sets the maximum value of the x-axis for this plot."""
+            self.extent = [min_x, max_x, min_y, max_y]
+
     class Histogram:
         """Create a histogram."""
         def __init__(self):
@@ -120,6 +163,7 @@ class Graphs:
 
 class NIKKE:
     """API for computing various NIKKE calculations."""
+    # Table for elements that counter one another
     element_table = {
         'water': 'fire',
         'fire': 'wind',
@@ -128,10 +172,33 @@ class NIKKE:
         'electric': 'water'
     }
 
+    # Emperical value for weapons
     weapon_table = {
-        'AR': 60.0 / 5.0,
-        'SMG': 225.0 / 12.0,
-        'MG': 300 / 7.0,
+        'AR': {
+            'attack_speed': 60.0 / 5.0,
+            'wind_up_seconds': 0.0,
+            'wind_up_ammo': 0
+        },
+        'SMG': {
+            'attack_speed': 225.0 / 12.0,
+            'wind_up_seconds': 0.0,
+            'wind_up_ammo': 0
+        },
+        'MG': {
+            'attack_speed': 52,
+            'wind_up_seconds': 2,
+            'wind_up_ammo': 45
+        },
+    }
+
+    # Reference values for cubes, calls resilience 'reload' because it's easier to type...
+    cube_table = {
+        'reload': [0.0, 14.84, 22.27, 29.69],
+        'bastion': [0.0, 0.1, 0.2, 0.3],
+        'adjutant': [0.0, 1.06, 1.59, 2.12],
+        'wingman': [0.0, 14.84, 22.27, 29.69],
+        'onslaught': [0.0, 2.54, 3.81, 5.09],
+        'assault': [0.0, 2.54, 3.81, 5.09],
     }
 
     class Config:
@@ -151,6 +218,15 @@ class NIKKE:
                     ret.append(item)
             return ret
 
+        def get_normal_params(self, name: str) -> dict:
+            """Returns a dictionary containing the relevant normal attack parameters."""
+            return {
+                "damage": self.get_normal_damage(name),
+                "ammo": self.get_ammo_capacity(name),
+                "reload": self.get_reload_seconds(name),
+                "weapon": self.get_weapon_type(name),
+            }
+
         def get_nikke_attack(self, name: str) -> float:
             """Returns a NIKKE's attack value from the configuration file."""
             return self.config['nikkes'][name]['attack']
@@ -158,6 +234,22 @@ class NIKKE:
         def get_enemy_defense(self, name: str) -> float:
             """Returns an enemy's defense value from the configuration file."""
             return self.config['enemies'][name]['defense']
+
+        def get_weapon_type(self, name: str) -> str:
+            """Returns the base ammo capacity of a specific Nikke."""
+            return self.config['nikkes'][name]['weapon']
+
+        def get_ammo_capacity(self, name: str) -> int:
+            """Returns the base ammo capacity of a specific Nikke."""
+            return self.config['nikkes'][name]['ammo']
+
+        def get_normal_damage(self, name: str) -> float:
+            """Returns the normal attack damage of a specific Nikke."""
+            return self.config['nikkes'][name]['normal']
+
+        def get_reload_seconds(self, name: str) -> float:
+            """Returns the base ammo capacity of a specific Nikke."""
+            return self.config['nikkes'][name]['reload']
 
         def add_skill_1(self, name: str, depth: int = None):
             """Adds any buffs from a NIKKE's Skill 1 to the buff list."""
@@ -217,6 +309,30 @@ class NIKKE:
         crit_rate: float = 15
         crit_dmg: float = 50
 
+    @staticmethod
+    def compute_normal_dps(
+        damage: float,
+        ammo: int,
+        reload: float,
+        weapon: str) -> float:
+        """Computes the normal attack DPS of a character as multiplier/second.
+        
+        - damage: The damage multiplier of each normal attack.
+        - ammo: The actual ammo of the character, after ammo percentage and bastion cube.
+        - reload: The actual reload time of the character, after reload speed.
+        - weapon: The key specifying what weapon this character uses.
+        """
+        speed = NIKKE.weapon_table[weapon]['attack_speed']
+        wind_up_seconds = NIKKE.weapon_table[weapon]['wind_up_seconds']
+        wind_up_ammo = NIKKE.weapon_table[weapon]['wind_up_ammo']
+        return damage * ammo / ((ammo - wind_up_ammo) / speed + wind_up_seconds + reload)
+
+    @staticmethod
+    def compute_peak_normal_dps(damage: float, weapon: str) -> float:
+        """Returns the maximum achievable multiplier/second for a 
+        character's normal attack, in other words the infinite ammo case.
+        """
+        return damage * NIKKE.weapon_table[weapon]['attack_speed']
 
     @staticmethod
     def compute_damage(
@@ -326,7 +442,7 @@ def main() -> int:
     logger = Util.get_logger('NIKKE_Logger')
     config = NIKKE.Config()
     params = {
-        'damage':  config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
+        'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
         'attack': config.get_nikke_attack('Scarlet'),
         'defense': config.get_enemy_defense('shooting_range'),
     }
@@ -359,8 +475,47 @@ def main() -> int:
         for j in range(data.shape[1]):
             data[i][j] = 1 + i * 0.1 + j * 0.1
 
-    color_plot = Graphs.ColorPlot('Test Plot')
-    color_plot.load_data(data)
+
+    # Let's compute Scarlet's normal attack DPS
+    nikke_name = 'Scarlet'
+    params = config.get_normal_params(nikke_name)
+    params['ammo'] =  int(params['ammo'] * 1.4)
+    dps = NIKKE.compute_normal_dps(**params)
+    peak = NIKKE.compute_peak_normal_dps(params['damage'], params['weapon'])
+    ratio = dps / peak * 100
+    message = f'{nikke_name} Normal Attack DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
+    logger.info(message)
+
+    # Let's do it for Liter now
+    nikke_name = 'Liter'
+    params = config.get_normal_params(nikke_name)
+    dps = NIKKE.compute_normal_dps(**params)
+    peak = NIKKE.compute_peak_normal_dps(params['damage'], params['weapon'])
+    ratio = dps / peak * 100
+    message = f'{nikke_name} Normal Attack DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
+    logger.info(message)
+
+    # Let's graph Scarlet's normal attack DPS as a function of ammo
+    nikke_name = 'Scarlet'
+    params = config.get_normal_params(nikke_name)
+    params['reload'] *= (1 - NIKKE.cube_table['reload'][2] / 100)
+    base_ammo = params['ammo']
+    base_dps = NIKKE.compute_normal_dps(**params)
+    iterations = 25
+    data = np.zeros((iterations, 2))
+    for i in range(iterations):
+        data[i][0] = 1 + 0.1 * i
+        params['ammo'] = base_ammo * data[i][0]
+        data[i][0] = (data[i][0] - 1) * 100
+        data[i][1] = ((NIKKE.compute_normal_dps(**params) / base_dps) - 1) * 100
+    logger.info('{nikke_name} Scaling with ammunition capacity:')
+    logger.info('\n%s', str(data))
+
+    # Add a plot for this graph
+    plot = Graphs.ScatterPlot('Scarlet Normal Attack DPS vs Ammo Capacity (Lv2 Reload Cube)')
+    plot.draw_line(data)
+    plot.set_xlabel('Ammo Capacity Up (%)')
+    plot.set_ylabel('Damage Increase (%)')
     plt.show()
 
     return 0
