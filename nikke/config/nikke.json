@@ -3,9 +3,9 @@
     "nikkes": {
         "Scarlet": {
             "element": "electric",
-            "max_health": 123456,
-            "attack": 40221,
-            "defense": 6000,
+            "max_health": 1016359,
+            "attack": 43108,
+            "defense": 6908,
             "role": "attacker",
             "manufacturer": "pilgrim",
             "weapon": "AR",
@@ -24,6 +24,18 @@
                 }
             },
             "skill_2": {
+                "type": "conditional_buff",
+                "target": "self",
+                "conditions": {
+                    "less": {
+                        "health": 50
+                    }
+                },
+                "effect": {
+                    "type": "buff",
+                    "crit_dmg": 5.78,
+                    "duration": 10
+                }
             },
             "burst": {
                 "type": "conditional_buff",
@@ -89,6 +101,49 @@
                     "type": "buff",
                     "attack": 66,
                     "duration": 5
+                }
+            }
+        },
+        "Modernia": {
+            "element": "iron",
+            "max_health": 1164971,
+            "attack": 46247,
+            "defense": 6531,
+            "role": "attacker",
+            "manufacturer": "pilgrim",
+            "weapon": "MG",
+            "ammo": 300,
+            "normal": 7.71,
+            "reload": 2.3,
+            "skill_1": {
+                "type": "stacking_buff",
+                "target": "self",
+                "stack": 5,
+                "effect": {
+                    "type": "buff",
+                    "damage": 3.05,
+                    "crit_dmg": 14.25,
+                    "ammo": -5.04,
+                    "duration": 10
+                }
+            },
+            "skill_2": {
+                "type": "buff",
+                "target": "self",
+                "effect": {
+                    "type": "buff",
+                    "attack": 29.38,
+                    "hit_rate": 8.56,
+                    "duration": 15
+                }
+            },
+            "burst": {
+                "type": "buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "attack": 66,
+                    "duration": 15
                 }
             }
         }

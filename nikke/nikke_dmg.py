@@ -437,9 +437,51 @@ class NIKKE:
 
 
 
+logger = Util.get_logger('NIKKE_Logger')
+
+class Helpers:
+    """Namespace for helper functions specific to this script."""
+    @staticmethod
+    def compute_normal_attack_dps(
+            config: NIKKE.Config,
+            nikke_name: str,
+            damage: float = None,
+            ammo: float = 0.0,
+            reload: float = NIKKE.cube_table['reload'][2],
+            graph: bool = False) -> float:
+        """Graphs the normal attack DPS for the given NIKKE."""
+        params = config.get_normal_params(nikke_name)
+        if damage is not None:
+            params['damage'] = damage
+        base_ammo = params['ammo']
+        params['ammo'] = int(base_ammo * (1 + ammo / 100))
+        params['reload'] *= (1 - reload / 100)
+        dps = NIKKE.compute_normal_dps(**params)
+        peak = NIKKE.compute_peak_normal_dps(params['damage'], params['weapon'])
+        ratio = dps / peak * 100
+        message = f'{nikke_name} Normal Attack DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
+        logger.info(message)
+
+        # Add a plot for this graph
+        if graph:
+            iterations = 25
+            data = np.zeros((iterations, 2))
+            for i in range(iterations):
+                data[i][0] = 1 + 0.1 * i + ammo / 100
+                params['ammo'] = int(base_ammo * data[i][0])
+                data[i][0] = (data[i][0] - 1) * 100
+                data[i][1] = ((NIKKE.compute_normal_dps(**params) / dps) - 1) * 100
+            plot = Graphs.ScatterPlot(f'{nikke_name} Normal Attack DPS vs Ammo (Lv2 Reload Cube)')
+            plot.draw_line(data)
+            plot.set_xlabel('Ammo Capacity Up (%)')
+            plot.set_ylabel('Damage Increase (%)')
+            plt.show()
+
+        return dps
+
+
 def main() -> int:
     """Main function."""
-    logger = Util.get_logger('NIKKE_Logger')
     config = NIKKE.Config()
     params = {
         'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
@@ -450,14 +492,15 @@ def main() -> int:
     config.add_skill_1('Scarlet')
     config.add_skill_1('Scarlet')
     config.add_skill_1('Scarlet')
+    config.add_skill_2('Scarlet')
     config.add_skill_1('Liter', depth=3)
     config.add_burst('Liter')
     config.add_burst('Scarlet')
 
-    buffs = config.get_buff_list()
-    logger.debug(buffs)
+    scarlet_fb_buffs = config.get_buff_list()
+    logger.debug(scarlet_fb_buffs)
 
-    dmg_cache = NIKKE.generate_cache(buffs)
+    dmg_cache = NIKKE.generate_cache(scarlet_fb_buffs)
     values = NIKKE.compute_damage(**params, cache=dmg_cache)
 
     logger.info('Scarlet burst damage based on the following stats:\
@@ -475,48 +518,109 @@ def main() -> int:
         for j in range(data.shape[1]):
             data[i][j] = 1 + i * 0.1 + j * 0.1
 
+    scar_n = Helpers.compute_normal_attack_dps(
+        config,
+        'Scarlet',
+        ammo=52.50,
+        graph=False)
+    mod_n = Helpers.compute_normal_attack_dps(
+        config,
+        'Modernia',
+        ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+52.50,
+        graph=False)
+    mod_s1 = Helpers.compute_normal_attack_dps(
+        config,
+        'Modernia',
+        damage=config.config['nikkes']['Modernia']['skill_1']['effect']['damage'],
+        ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+52.50,
+        graph=False)
 
-    # Let's compute Scarlet's normal attack DPS
-    nikke_name = 'Scarlet'
-    params = config.get_normal_params(nikke_name)
-    params['ammo'] =  int(params['ammo'] * 1.4)
-    dps = NIKKE.compute_normal_dps(**params)
-    peak = NIKKE.compute_peak_normal_dps(params['damage'], params['weapon'])
-    ratio = dps / peak * 100
-    message = f'{nikke_name} Normal Attack DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
-    logger.info(message)
+    # Scarlet attack dps calculation
+    params = {
+        'damage': scar_n,
+        'attack': config.get_nikke_attack('Scarlet'),
+        'defense': config.get_enemy_defense('special_interception'),
+        'core_hit': False,
+        'range_bonus': False,
+        'full_burst': True,
+        'element_bonus': False,
+    }
+    dmg_cache = NIKKE.generate_cache(scarlet_fb_buffs)
+    avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
+    params['core_hit'] = True
+    core_avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
 
-    # Let's do it for Liter now
-    nikke_name = 'Liter'
-    params = config.get_normal_params(nikke_name)
-    dps = NIKKE.compute_normal_dps(**params)
-    peak = NIKKE.compute_peak_normal_dps(params['damage'], params['weapon'])
-    ratio = dps / peak * 100
-    message = f'{nikke_name} Normal Attack DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
-    logger.info(message)
+    total_avg_dmg = avg_dmg * 0.6 + core_avg_dmg * 0.4
 
-    # Let's graph Scarlet's normal attack DPS as a function of ammo
-    nikke_name = 'Scarlet'
-    params = config.get_normal_params(nikke_name)
-    params['reload'] *= (1 - NIKKE.cube_table['reload'][2] / 100)
-    base_ammo = params['ammo']
-    base_dps = NIKKE.compute_normal_dps(**params)
-    iterations = 25
-    data = np.zeros((iterations, 2))
-    for i in range(iterations):
-        data[i][0] = 1 + 0.1 * i
-        params['ammo'] = base_ammo * data[i][0]
-        data[i][0] = (data[i][0] - 1) * 100
-        data[i][1] = ((NIKKE.compute_normal_dps(**params) / base_dps) - 1) * 100
-    logger.info('{nikke_name} Scaling with ammunition capacity:')
-    logger.info('\n%s', str(data))
+    # custom buff list
+    custom_buffs = [{
+        'type': 'buff',
+        'attack': 23.15*5,
+        'crit_rate': 17.12,
+        'crit_dmg': 5.78,
+    }]
+    params = {
+        'damage': scar_n,
+        'attack': config.get_nikke_attack('Scarlet'),
+        'defense': config.get_enemy_defense('special_interception'),
+        'core_hit': False,
+        'range_bonus': False,
+        'full_burst': True,
+        'element_bonus': False,
+    }
+    dmg_cache = NIKKE.generate_cache(custom_buffs)
+    avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
+    params['core_hit'] = True
+    core_avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
 
-    # Add a plot for this graph
-    plot = Graphs.ScatterPlot('Scarlet Normal Attack DPS vs Ammo Capacity (Lv2 Reload Cube)')
-    plot.draw_line(data)
-    plot.set_xlabel('Ammo Capacity Up (%)')
-    plot.set_ylabel('Damage Increase (%)')
-    plt.show()
+    total_avg_dmg += avg_dmg * 0.6 + core_avg_dmg * 0.4
+
+    msg = f'Scarlet Average Damage = {total_avg_dmg:,.2f}'
+    logger.info(msg)
+
+    # Modernia attack dps calculation
+    params = {
+        'damage': mod_n,
+        'attack': config.get_nikke_attack('Modernia'),
+        'defense': config.get_enemy_defense('special_interception'),
+        'core_hit': True,
+        'range_bonus': False,
+        'full_burst': True,
+        'element_bonus': False,
+    }
+    custom_buffs = [{
+        'type': 'buff',
+        'attack': 29.38+66+14.42,
+        'crit_dmg': 14.42+14.25*5,
+    }]
+    dmg_cache = NIKKE.generate_cache(custom_buffs)
+    total_avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
+    params['damage'] = mod_s1
+    params['core_hit'] = False
+    total_avg_dmg += NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
+
+    params = {
+        'damage': mod_n,
+        'attack': config.get_nikke_attack('Modernia'),
+        'defense': config.get_enemy_defense('special_interception'),
+        'core_hit': True,
+        'range_bonus': False,
+        'full_burst': True,
+        'element_bonus': False,
+    }
+    custom_buffs = [{
+        'type': 'buff',
+        'attack': 29.38,
+        'crit_dmg': 14.25*5,
+    }]
+    dmg_cache = NIKKE.generate_cache(custom_buffs)
+    total_avg_dmg += NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
+    params['damage'] = mod_s1
+    params['core_hit'] = False
+    total_avg_dmg += NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
+
+    msg = f'Modernia Average Damage = {total_avg_dmg:,.2f}'
+    logger.info(msg)
 
     return 0
 
