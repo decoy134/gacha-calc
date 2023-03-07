@@ -25,7 +25,7 @@ class Util:
         logger = logging.getLogger(name)
         if logger.hasHandlers():
             return logger
-        
+
         logger.setLevel(logging.DEBUG)
 
         # Create handlers
@@ -293,14 +293,14 @@ class NIKKE:
 
 
         @staticmethod
-        def __update_effect_duration(effect, start, duration):
+        def update_effect_duration(effect, start, duration):
             """Updates an effect by reference according to its start and duration."""
             if duration is not None:
                 effect['duration'] = duration
             effect['start'] = start
             effect['end'] = start + effect.get('duration', math.inf)
             return effect
-        
+
         def __pre_add_buff(
                 self,
                 skill_type: str,
@@ -326,7 +326,7 @@ class NIKKE:
                 effect = self.buffs[key]
                 if skill['type'].startswith('stack'):
                     effect['stacks'] = effect.get('stacks', 1) + 1
-                NIKKE.Config.__update_effect_duration(effect, start, duration)
+                NIKKE.Config.update_effect_duration(effect, start, duration)
 
         def __add_buff(
                 self,
@@ -347,10 +347,10 @@ class NIKKE:
                 self.buffs[key] = []
                 for i in range(length):
                     if effect[i]['type'] == 'buff':
-                        self.buffs[key].append(NIKKE.Config.__update_effect_duration(
+                        self.buffs[key].append(NIKKE.Config.update_effect_duration(
                             copy.deepcopy(effect[i]), start, duration))
             elif effect['type'] == 'buff':
-                self.buffs[key] = NIKKE.Config.__update_effect_duration(
+                self.buffs[key] = NIKKE.Config.update_effect_duration(
                     copy.deepcopy(effect), start, duration)
 
         def clear_buffs(self):
@@ -756,7 +756,7 @@ def main() -> int:
         'defense': config.get_enemy_defense('special_interception'),
     }
     # Scarlet buffs
-    for i in range(5):
+    for _ in range(5):
         config.add_skill_1('Scarlet', duration=math.inf)
     config.add_skill_2('Scarlet', duration=math.inf)
     config.add_skill_1('Liter', depth=3, duration=4.5)
@@ -767,7 +767,7 @@ def main() -> int:
 
     # Modernia buffs
     config.clear_buffs()
-    for i in range(5):
+    for _ in range(5):
         config.add_skill_1('Modernia', duration=math.inf)
     config.add_skill_2('Modernia', duration=math.inf)
     config.add_skill_1('Liter', depth=3, duration=4.5)
@@ -841,11 +841,13 @@ def main() -> int:
 
     save_dmg = total_avg_dmg
     dps = total_avg_dmg / 10
-    msg = f'Scarlet Average Damage (Includes Burst) = {total_avg_dmg:,.2f} ({dps:,.2f} damage/s)'
+    msg = (f'Scarlet Average Damage (Includes Burst) = {total_avg_dmg:,.2f} '
+           f'({dps:,.2f} damage/s)')
     logger.info(msg)
 
     dps = scar_dmg_mod_burst / 15
-    msg = f'Scarlet Average Damage During Modernia Burst = {scar_dmg_mod_burst:,.2f} ({dps:,.2f} damage/s)'
+    msg = (f'Scarlet Average Damage (Modernia Burst) = {scar_dmg_mod_burst:,.2f} '
+           f'({dps:,.2f} damage/s)')
     logger.info(msg)
 
     # Modernia attack dps calculation
