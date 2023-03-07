@@ -1,6 +1,7 @@
 """Module nikke_dmg for computing the DPS of various NIKKE combinations."""
 
 import copy
+import math
 import logging
 import json
 import os
@@ -254,34 +255,34 @@ class NIKKE:
             """Returns the base ammo capacity of a specific Nikke."""
             return self.config['nikkes'][name]['reload']
 
-        def add_skill_1(self, name: str, depth: int = None):
+        def add_skill_1(self, name: str, depth: int = None, start: float = 0.0):
             """Adds any buffs from a NIKKE's Skill 1 to the buff list."""
             skill = self.config['nikkes'][name]['skill_1']
             key = f'{name}_S1'
             if key not in self.buffs:
-                self.add_buff(skill['effect'], key, depth)
+                self.add_buff(skill['effect'], key, depth, start)
             elif skill['type'].startswith('stack'):
                 self.buffs[key]['stacks'] = self.buffs[key].get('stacks', 1) + 1
 
-        def add_skill_2(self, name: str, depth: int = None):
+        def add_skill_2(self, name: str, depth: int = None, start: float = 0.0):
             """Adds any buffs from a NIKKE's Skill 2 to the buff list."""
             skill = self.config['nikkes'][name]['skill_2']
             key = f'{name}_S2'
             if key not in self.buffs:
-                self.add_buff(skill['effect'], key, depth)
+                self.add_buff(skill['effect'], key, depth, start)
             elif skill['type'].startswith('stack'):
                 self.buffs[key]['stacks'] = self.buffs[key].get('stacks', 0) + 1
 
-        def add_burst(self, name: str, depth: int = None):
+        def add_burst(self, name: str, depth: int = None, start: float = 0.0):
             """Adds any buffs from a NIKKE's Burst to the buff list."""
             skill = self.config['nikkes'][name]['burst']
             key = f'{name}_B'
             if key not in self.buffs:
-                self.add_buff(skill['effect'], key, depth)
+                self.add_buff(skill['effect'], key, depth, start)
             elif skill['type'].startswith('stack'):
                 self.buffs[key]['stacks'] = self.buffs[key].get('stacks', 0) + 1
 
-        def add_buff(self, effect: list or dict, key: str, depth: int = None):
+        def add_buff(self, effect: list or dict, key: str, depth: int = None, start: float = 0.0):
             """Adds a buff to the buff list, if the effect meets the requisite conditions."""
             if isinstance(effect, list):
                 length = len(effect)
@@ -290,9 +291,15 @@ class NIKKE:
                 self.buffs[key] = []
                 for i in range(length):
                     if effect[i]['type'] == 'buff':
-                        self.buffs[key].append(effect[i])
+                        to_add = copy.deepcopy(effect[i])
+                        to_add['start'] = start
+                        to_add['end'] = start + to_add.get('duration', math.inf)
+                        self.buffs[key].append(to_add)
             elif effect['type'] == 'buff':
-                self.buffs[key] = effect
+                to_add = copy.deepcopy(effect)
+                to_add['start'] = start
+                to_add['end'] = start + to_add.get('duration', math.inf)
+                self.buffs[key] = to_add
 
         def clear_buffs(self):
             """Empties the internal buff list."""
@@ -412,6 +419,8 @@ class NIKKE:
                 cache.modifiers[0] += buff['attack'] * stacks
             if 'charge_dmg' in buff:
                 cache.modifiers[1] += buff['charge_dmg'] * stacks
+            if 'full_charge_dmg' in buff:
+                cache.modifiers[1] += (buff['full_charge_dmg'] - 100) * stacks
             if 'damage_taken' in buff:
                 cache.modifiers[2] += buff['damage_taken'] * stacks
             if 'element_dmg' in buff:
@@ -513,6 +522,79 @@ class NIKKE:
         """Sums damage from the damage matrix according to tags."""
         matrix = NIKKE.compute_damage_matrix(damage, attack, defense, buffs=buffs)
         return NIKKE.matrix_avg_dmg(matrix, tags, normalize=normalize)
+    
+    @staticmethod
+    def compute_dps_window(
+            damage_tags: list,
+            attack: float,
+            defense: float,
+            buffs: list,
+            normalize: bool = True) -> list:
+        """Uses start and end times in the buff iist to estimate damage."""
+        # Start by searching through the buff list to determine timeline
+        time_points = np.array([])
+        for buff in buffs:
+            start = buff['start']
+            end = buff['end']
+            if start not in time_points:
+                time_points = np.append(time_points, start)
+            if not math.isinf(end) and end not in time_points:
+                time_points = np.append(time_points, end)
+
+        # Return the default value if no timeline was created
+        if len(time_points) < 2:
+            return []
+
+        # Sort the timeline in chronological order
+        time_points = np.sort(time_points)
+
+        results = np.zeros(len(damage_tags))
+        for i, dmg_tag in enumerate(damage_tags):
+            damage = dmg_tag['damage']
+            tags = dmg_tag['tags']
+            start = dmg_tag['start']
+            duration = dmg_tag.get('duration', 0)
+            end = start + duration
+
+            # Timeline loop - t0 is the inclusive current time and t1 is non-inclusive the end time
+            t_0 = time_points[0]
+            for t_1 in time_points:
+                # Ensure that we start on index 1
+                if t_0 >= t_1:
+                    continue
+                # Shift the window until we are in a valid start time
+                if start <= t_1:
+                    t_0 = t_1
+                    continue
+                # Break if the window start exceeds the end time
+                if end < t_0:
+                    break
+
+                # Otherwise, do the window calculation with start >= t0, end > t0 and start >= end
+                window_buffs = []
+                for buff in buffs:
+                    if t_0 >= buff['start'] and t_0 < buff['end']:
+                        window_buffs.append(buff)
+                results[i] = NIKKE.accumulate_avg_dmg(
+                    damage,
+                    attack,
+                    defense,
+                    window_buffs,
+                    tags,
+                    normalize
+                )
+
+                # Determine, based on duration, whether or not to multiply
+                duration = min(end, t_1) - start if duration != 0 else 0
+                if duration > 0:
+                    results[i] *= duration
+                if end - start == duration:
+                    break
+
+                t_0 = t_1
+                start = t_1
+        return results
+
 
     @staticmethod
     def compare_element(source: str, target: str) -> bool:
@@ -604,12 +686,6 @@ def main() -> int:
     logger.info('Base Damage: %s', f'{values[0]:,.2f}')
     logger.info('Crit Damage: %s', f'{values[1]:,.2f}')
     logger.info('Average Damage: %s', f'{values[2]:,.2f}')
-
-    # Make a graph for fun
-    data = np.zeros(shape=(5, 5))
-    for i in range(data.shape[0]):
-        for j in range(data.shape[1]):
-            data[i][j] = 1 + i * 0.1 + j * 0.1
 
     ammo = 152.50
     scar_n = Helpers.compute_normal_attack_dps(

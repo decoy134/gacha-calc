@@ -105,7 +105,7 @@
             }
         },
         "Modernia": {
-            "element": "iron",
+            "element": "fire",
             "max_health": 1164971,
             "attack": 46247,
             "defense": 6531,
@@ -148,6 +148,49 @@
                 }
             }
         },
+        "Snow White": {
+            "element": "iron",
+            "max_health": 943889,
+            "attack": 40133,
+            "defense": 6336,
+            "role": "attacker",
+            "manufacturer": "pilgrim",
+            "weapon": "AR",
+            "ammo": 60,
+            "normal": 14.71,
+            "reload": 1.5,
+            "skill_1": {
+                "type": "buff",
+                "target": "self",
+                "effect": {
+                    "type": "conditional_buff",
+                    "damage": 65.55,
+                    "attack": 6.55,
+                    "duration": 5
+                }
+            },
+            "skill_2": {
+                "type": "conditional_buff",
+                "target": "self",
+                "effect": {
+                    "type": "buff",
+                    "damage": 126.64,
+                    "crit_rate": 22.83,
+                    "duration": 10
+                }
+            },
+            "burst": {
+                "type": "extra_damage",
+                "target": "enemies",
+                "effect": {
+                    "type": "pierce_shot",
+                    "target": "enemies",
+                    "damage": 499.5,
+                    "charge_time": 5,
+                    "full_charge_damage": 1000
+                }
+            }
+        },
         "Dolla": {
             "element": "wind",
             "max_health": 1130154,
@@ -158,7 +201,7 @@
             "weapon": "SR",
             "ammo": 6,
             "charge_time": 1,
-            "charge_damage": 250,
+            "full_charge_damage": 150,
             "normal": 69.04,
             "reload": 2.0,
             "skill_1": {
