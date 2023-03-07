@@ -255,35 +255,91 @@ class NIKKE:
             """Returns the base ammo capacity of a specific Nikke."""
             return self.config['nikkes'][name]['reload']
 
-        def add_skill_1(self, name: str, depth: int = None, start: float = 0.0):
-            """Adds any buffs from a NIKKE's Skill 1 to the buff list."""
-            skill = self.config['nikkes'][name]['skill_1']
-            key = f'{name}_S1'
-            if key not in self.buffs:
-                self.add_buff(skill['effect'], key, depth, start)
-            elif skill['type'].startswith('stack'):
-                self.buffs[key]['stacks'] = self.buffs[key].get('stacks', 1) + 1
+        def add_skill_1(
+                self,
+                name: str,
+                depth: int = None,
+                start: float = 0.0,
+                duration: float = None):
+            """Adds any buffs from a NIKKE's Skill 1 to the buff list.
+            
+            Forwards the data to __pre_add_buff with the 'skill_1' key.
+            """
+            self.__pre_add_buff('skill_1', f'{name}_S1', name, depth, start, duration)
 
-        def add_skill_2(self, name: str, depth: int = None, start: float = 0.0):
-            """Adds any buffs from a NIKKE's Skill 2 to the buff list."""
-            skill = self.config['nikkes'][name]['skill_2']
-            key = f'{name}_S2'
-            if key not in self.buffs:
-                self.add_buff(skill['effect'], key, depth, start)
-            elif skill['type'].startswith('stack'):
-                self.buffs[key]['stacks'] = self.buffs[key].get('stacks', 0) + 1
+        def add_skill_2(
+                self,
+                name: str,
+                depth: int = None,
+                start: float = 0.0,
+                duration: float = None):
+            """Adds any buffs from a NIKKE's Skill 2 to the buff list.
+            
+            Forwards the data to __pre_add_buff with the 'skill_2' key.
+            """
+            self.__pre_add_buff('skill_2', f'{name}_S2', name, depth, start, duration)
 
-        def add_burst(self, name: str, depth: int = None, start: float = 0.0):
-            """Adds any buffs from a NIKKE's Burst to the buff list."""
-            skill = self.config['nikkes'][name]['burst']
-            key = f'{name}_B'
-            if key not in self.buffs:
-                self.add_buff(skill['effect'], key, depth, start)
-            elif skill['type'].startswith('stack'):
-                self.buffs[key]['stacks'] = self.buffs[key].get('stacks', 0) + 1
+        def add_burst(
+                self,
+                name: str,
+                depth: int = None,
+                start: float = 0.0,
+                duration: float = None):
+            """Adds any buffs from a NIKKE's Burst to the buff list.
+            
+            Forwards the data to __pre_add_buff with the 'burst' key.
+            """
+            self.__pre_add_buff('burst', f'{name}_B', name, depth, start, duration)
 
-        def add_buff(self, effect: list or dict, key: str, depth: int = None, start: float = 0.0):
-            """Adds a buff to the buff list, if the effect meets the requisite conditions."""
+
+        @staticmethod
+        def __update_effect_duration(effect, start, duration):
+            """Updates an effect by reference according to its start and duration."""
+            if duration is not None:
+                effect['duration'] = duration
+            effect['start'] = start
+            effect['end'] = start + effect.get('duration', math.inf)
+            return effect
+        
+        def __pre_add_buff(
+                self,
+                skill_type: str,
+                key: str,
+                name: str,
+                depth: int = None,
+                start: float = 0.0,
+                duration: float = None):
+            """Adds any buffs from a NIKKE's skill key to the buff list.
+
+            If the buff does not exist in the buff list, then it calls the next
+            __add_buff utility to add it to the buff list.
+            
+            This function checks if the buff already exists in the buff list
+            and whether it is stackable. If it is, it increases the buffs stack count.
+            
+            It also updates the buff's start, end, and duration metadata.
+            """
+            skill = self.config['nikkes'][name][skill_type]
+            if key not in self.buffs:
+                self.__add_buff(skill['effect'], key, depth, start, duration)
+            else:
+                effect = self.buffs[key]
+                if skill['type'].startswith('stack'):
+                    effect['stacks'] = effect.get('stacks', 1) + 1
+                NIKKE.Config.__update_effect_duration(effect, start, duration)
+
+        def __add_buff(
+                self,
+                effect: list or dict,
+                key: str,
+                depth: int = None,
+                start: float = 0.0,
+                duration: float = None):
+            """Adds a buff to the buff list, if the effect meets the requisite conditions.
+
+            This function is called only when the buff given is not already present
+            in the current buff list.
+            """
             if isinstance(effect, list):
                 length = len(effect)
                 if isinstance(depth, int) and depth > 0 and depth <= length:
@@ -291,15 +347,11 @@ class NIKKE:
                 self.buffs[key] = []
                 for i in range(length):
                     if effect[i]['type'] == 'buff':
-                        to_add = copy.deepcopy(effect[i])
-                        to_add['start'] = start
-                        to_add['end'] = start + to_add.get('duration', math.inf)
-                        self.buffs[key].append(to_add)
+                        self.buffs[key].append(NIKKE.Config.__update_effect_duration(
+                            copy.deepcopy(effect[i]), start, duration))
             elif effect['type'] == 'buff':
-                to_add = copy.deepcopy(effect)
-                to_add['start'] = start
-                to_add['end'] = start + to_add.get('duration', math.inf)
-                self.buffs[key] = to_add
+                self.buffs[key] = NIKKE.Config.__update_effect_duration(
+                    copy.deepcopy(effect), start, duration)
 
         def clear_buffs(self):
             """Empties the internal buff list."""
@@ -522,78 +574,97 @@ class NIKKE:
         """Sums damage from the damage matrix according to tags."""
         matrix = NIKKE.compute_damage_matrix(damage, attack, defense, buffs=buffs)
         return NIKKE.matrix_avg_dmg(matrix, tags, normalize=normalize)
-    
+
     @staticmethod
     def compute_dps_window(
             damage_tags: list,
             attack: float,
             defense: float,
             buffs: list,
-            normalize: bool = True) -> list:
-        """Uses start and end times in the buff iist to estimate damage."""
+            normalize: bool = True,
+            accumulate: bool = True,
+            window_start: float = -math.inf,
+            window_end: float = math.inf) -> float:
+        """Uses start and end times in the buff iist to estimate damage.
+        
+        damage_tags specifies the damage to sum over and the associated
+        bonuses from core hits, full burst, etc., and in what duration
+        window they apply.
+
+        normalize is passed to the accumulate function.
+
+        accumulate when True will sum the final result as a single float.
+
+        window_start manually specifies the minimum time to analyaze from.
+
+        window_end manually specifies the maximum time to analyze towards.
+        """
         # Start by searching through the buff list to determine timeline
         time_points = np.array([])
+        if not math.isinf(window_start):
+            time_points = np.append(time_points, window_start)
+        if not math.isinf(window_end):
+            time_points = np.append(time_points, window_end)
         for buff in buffs:
             start = buff['start']
             end = buff['end']
-            if start not in time_points:
+            if not math.isinf(start) and start > window_start and start not in time_points:
                 time_points = np.append(time_points, start)
-            if not math.isinf(end) and end not in time_points:
+            if not math.isinf(end) and end < window_end and end not in time_points:
                 time_points = np.append(time_points, end)
-
-        # Return the default value if no timeline was created
-        if len(time_points) < 2:
-            return []
 
         # Sort the timeline in chronological order
         time_points = np.sort(time_points)
 
+        # Preinitialize the list of time point windows
+        buff_windows = []
+        t_0 = time_points[0]
+        for t_1 in time_points:
+            if t_0 >= t_1:
+                continue
+            window = []
+            for buff in buffs:
+                if t_0 >= buff['start'] and t_0 < buff['end']:
+                    window.append(buff)
+            buff_windows.append((t_0, t_1, window))
+            t_0 = t_1
+
+        # Loop over all damage tags and begin accumulating the damage per window
         results = np.zeros(len(damage_tags))
         for i, dmg_tag in enumerate(damage_tags):
             damage = dmg_tag['damage']
             tags = dmg_tag['tags']
             start = dmg_tag['start']
             duration = dmg_tag.get('duration', 0)
-            end = start + duration
+            end = dmg_tag.get('end', start + duration if not math.isinf(duration) else math.inf)
 
             # Timeline loop - t0 is the inclusive current time and t1 is non-inclusive the end time
-            t_0 = time_points[0]
-            for t_1 in time_points:
-                # Ensure that we start on index 1
-                if t_0 >= t_1:
-                    continue
+            for t_0, t_1, window in buff_windows:
                 # Shift the window until we are in a valid start time
-                if start <= t_1:
-                    t_0 = t_1
+                if start >= t_1:
                     continue
                 # Break if the window start exceeds the end time
                 if end < t_0:
                     break
 
-                # Otherwise, do the window calculation with start >= t0, end > t0 and start >= end
-                window_buffs = []
-                for buff in buffs:
-                    if t_0 >= buff['start'] and t_0 < buff['end']:
-                        window_buffs.append(buff)
-                results[i] = NIKKE.accumulate_avg_dmg(
+                total_dmg = NIKKE.accumulate_avg_dmg(
                     damage,
                     attack,
                     defense,
-                    window_buffs,
+                    window,
                     tags,
                     normalize
                 )
 
                 # Determine, based on duration, whether or not to multiply
-                duration = min(end, t_1) - start if duration != 0 else 0
+                duration = min(end, t_1) - max(start, t_0) if duration != 0 else 0
                 if duration > 0:
-                    results[i] *= duration
-                if end - start == duration:
-                    break
+                    results[i] += total_dmg * duration
+                else:
+                    results[i] += total_dmg
 
-                t_0 = t_1
                 start = t_1
-        return results
+        return np.sum(results) if accumulate else results
 
 
     @staticmethod
@@ -620,7 +691,7 @@ class Helpers:
             reload: float = NIKKE.cube_table['reload'][2],
             log: bool = True,
             graph: bool = False) -> float:
-        """Graphs the normal attack DPS for the given NIKKE."""
+        """Graphs the normal attack DPS for the given NIKKE and logs it."""
         params = config.get_normal_params(nikke_name)
         if damage is not None:
             params['damage'] = damage
@@ -652,6 +723,28 @@ class Helpers:
 
         return dps
 
+    @staticmethod
+    def compute_actual_damage(
+            damage: float,
+            attack: float,
+            defense: float,
+            buffs: list,
+            log: bool = True) -> np.array:
+        """Returns the damage a single hit does under burst and logs it."""
+        dmg_cache = NIKKE.generate_cache(buffs)
+        values = NIKKE.compute_damage(damage, attack, defense, cache=dmg_cache)
+        if log:
+            logger = Util.get_logger('NIKKE_Logger')
+            msg = f'Scarlet burst damage based on the following stats:\
+                \n  - ATK: {attack}\
+                \n  - Enemy DEF: {defense}\
+                \n  - Skill Multiplier: {damage:.2f}'
+            logger.info(msg)
+            logger.info('Base Damage: %s', f'{values[0]:,.2f}')
+            logger.info('Crit Damage: %s', f'{values[1]:,.2f}')
+            logger.info('Average Damage: %s', f'{values[2]:,.2f}')
+        return values
+
 
 def main() -> int:
     """Main function."""
@@ -662,30 +755,24 @@ def main() -> int:
         'attack': config.get_nikke_attack('Modernia'),
         'defense': config.get_enemy_defense('special_interception'),
     }
-    config.add_skill_1('Scarlet')
-    config.add_skill_1('Scarlet')
-    config.add_skill_1('Scarlet')
-    config.add_skill_1('Scarlet')
-    config.add_skill_2('Scarlet')
-    config.add_skill_1('Liter', depth=3)
-    config.add_burst('Liter')
+    # Scarlet buffs
+    for i in range(5):
+        config.add_skill_1('Scarlet', duration=math.inf)
+    config.add_skill_2('Scarlet', duration=math.inf)
+    config.add_skill_1('Liter', depth=3, duration=4.5)
+    config.add_burst('Liter', duration=4.5)
     config.add_burst('Scarlet')
-
     scarlet_fb_buffs = config.get_buff_list()
-    logger.debug(scarlet_fb_buffs)
+    Helpers.compute_actual_damage(**params, buffs=scarlet_fb_buffs)
 
-    dmg_cache = NIKKE.generate_cache(scarlet_fb_buffs)
-    values = NIKKE.compute_damage(**params, cache=dmg_cache)
-    scar_b_avg_dmg = values[2]
-
-    logger.info('Scarlet burst damage based on the following stats:\
-                \n  - ATK: %d\
-                \n  - Enemy DEF: %d\
-                \n  - Skill Multiplier: %.2f',
-                int(params['attack']), int(params['defense']), params['damage'])
-    logger.info('Base Damage: %s', f'{values[0]:,.2f}')
-    logger.info('Crit Damage: %s', f'{values[1]:,.2f}')
-    logger.info('Average Damage: %s', f'{values[2]:,.2f}')
+    # Modernia buffs
+    config.clear_buffs()
+    for i in range(5):
+        config.add_skill_1('Modernia', duration=math.inf)
+    config.add_skill_2('Modernia', duration=math.inf)
+    config.add_skill_1('Liter', depth=3, duration=4.5)
+    config.add_burst('Liter', duration=4.5)
+    modernia_fb_buffs = config.get_buff_list()
 
     ammo = 152.50
     scar_n = Helpers.compute_normal_attack_dps(
@@ -698,7 +785,7 @@ def main() -> int:
         'Modernia',
         ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+ammo,
         graph=False)
-    logger.info('This next value is actually the multiplier per second of Modernia S1:')
+    logger.info('This next value is actually the multiplier/sec of Modernia S1:')
     mod_s1 = Helpers.compute_normal_attack_dps(
         config,
         'Modernia',
@@ -707,65 +794,84 @@ def main() -> int:
         graph=False)
 
     # Scarlet attack dps calculation
-    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True)
-    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True, core_hit=True)
+    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False)
+    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False, core_hit=True)
     tag_profile = {
-        base_tag: 0.80,
-        core_tag: 0.20
+        base_tag: 0.50,
+        core_tag: 0.50
     }
-    params = {
-        'damage': scar_n,
-        'attack': config.get_nikke_attack('Modernia'),
-        'defense': config.get_enemy_defense('special_interception'),
-        'buffs': scarlet_fb_buffs
-    }
-    total_avg_dmg = NIKKE.accumulate_avg_dmg(**params, tags=tag_profile) * 4.5
-    save_dmg_2 = total_avg_dmg
 
-    params['buffs'] = [{
-        'type': 'buff',
-        'attack': 23.15*5,
-        'crit_rate': 17.12,
-        'crit_dmg': 5.78,
-    }]
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags=tag_profile) * 5.5
-    save_dmg_2 += NIKKE.accumulate_avg_dmg(**params, tags=tag_profile) * 10.5
-    total_avg_dmg += scar_b_avg_dmg
+    total_avg_dmg = NIKKE.compute_dps_window(
+        damage_tags=[
+            {
+                'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
+                'start': 0.0,
+                'duration': 0,
+                'tags': {'base': 1.0},
+            },
+            {
+                'damage': scar_n,
+                'start': -math.inf,
+                'duration': math.inf,
+                'tags': tag_profile,
+            },
+        ],
+        attack=config.get_nikke_attack('Modernia'),
+        defense=config.get_enemy_defense('special_interception'),
+        buffs=scarlet_fb_buffs,
+        normalize=True,
+        window_start=0,
+        window_end=10
+    )
+    scar_dmg_mod_burst = NIKKE.compute_dps_window(
+        damage_tags=[
+            {
+                'damage': scar_n,
+                'start': -math.inf,
+                'duration': math.inf,
+                'tags': tag_profile,
+            },
+        ],
+        attack=config.get_nikke_attack('Modernia'),
+        defense=config.get_enemy_defense('special_interception'),
+        buffs=scarlet_fb_buffs,
+        window_start=0,
+        window_end=15
+    )
 
     save_dmg = total_avg_dmg
     dps = total_avg_dmg / 10
     msg = f'Scarlet Average Damage (Includes Burst) = {total_avg_dmg:,.2f} ({dps:,.2f} damage/s)'
     logger.info(msg)
 
-    dps = save_dmg_2 / 15
-    msg = f'Scarlet Average Damage During Modernia Burst = {save_dmg_2:,.2f} ({dps:,.2f} damage/s)'
+    dps = scar_dmg_mod_burst / 15
+    msg = f'Scarlet Average Damage During Modernia Burst = {scar_dmg_mod_burst:,.2f} ({dps:,.2f} damage/s)'
     logger.info(msg)
 
     # Modernia attack dps calculation
-    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True)
-    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True, core_hit=True)
-    params = {
-        'damage': mod_n,
-        'attack': config.get_nikke_attack('Modernia'),
-        'defense': config.get_enemy_defense('special_interception'),
-        'buffs': [{
-            'type': 'buff',
-            'attack': 29.38+66+14.42,
-            'crit_dmg': 14.42+14.25*5,
-        }]
-    }
-    total_avg_dmg = NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 4.5
-    params['damage'] = mod_s1
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 4.5
-
-    params['buffs'] = [{
-        'type': 'buff',
-        'attack': 29.38,
-        'crit_dmg': 14.25*5,
-    }]
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 5.5
-    params['damage'] = mod_n
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 5.5
+    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False)
+    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False, core_hit=True)
+    total_avg_dmg = NIKKE.compute_dps_window(
+        damage_tags=[
+            {
+                'damage': mod_n,
+                'start': -math.inf,
+                'duration': math.inf,
+                'tags': {core_tag: 1.0},
+            },
+            {
+                'damage': mod_s1,
+                'start': -math.inf,
+                'duration': math.inf,
+                'tags': {base_tag: 1.0},
+            },
+        ],
+        attack=config.get_nikke_attack('Modernia'),
+        defense=config.get_enemy_defense('special_interception'),
+        buffs=modernia_fb_buffs,
+        window_start=0,
+        window_end=10
+    )
 
     dps = total_avg_dmg / 10
     ratio = total_avg_dmg / save_dmg * 100
@@ -775,31 +881,31 @@ def main() -> int:
 
     # Modernia burst attack dps calculation
     mod_b = 2.24 * 2 * NIKKE.weapon_table['MG']['attack_speed']
-    params = {
-        'damage': mod_b,
-        'attack': config.get_nikke_attack('Modernia'),
-        'defense': config.get_enemy_defense('special_interception'),
-        'buffs': [{
-            'type': 'buff',
-            'attack': 29.38+66+14.42,
-            'crit_dmg': 14.42+14.25*5,
-        }]
-    }
-    total_avg_dmg = NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 4.5
-    params['damage'] = 3.05 * NIKKE.weapon_table['MG']['attack_speed']
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 4.5
-
-    params['buffs'] = [{
-        'type': 'buff',
-        'attack': 29.38,
-        'crit_dmg': 14.25*5,
-    }]
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 10.5
-    params['damage'] = mod_b
-    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 10.5
+    mod_s1_b = 3.05 * NIKKE.weapon_table['MG']['attack_speed']
+    total_avg_dmg = NIKKE.compute_dps_window(
+        damage_tags=[
+            {
+                'damage': mod_b,
+                'start': 0.0,
+                'duration': math.inf,
+                'tags': {core_tag: 1.0},
+            },
+            {
+                'damage': mod_s1_b,
+                'start': 0.0,
+                'duration': math.inf,
+                'tags': {base_tag: 1.0},
+            },
+        ],
+        attack=config.get_nikke_attack('Modernia'),
+        defense=config.get_enemy_defense('special_interception'),
+        buffs=modernia_fb_buffs,
+        window_start=0,
+        window_end=15
+    )
 
     dps = total_avg_dmg / 15
-    ratio = total_avg_dmg / save_dmg_2 * 100
+    ratio = total_avg_dmg / scar_dmg_mod_burst * 100
     msg = (f'Modernia Burst Average Damage = {total_avg_dmg:,.2f} '
            f'({dps:,.2f} damage/s) ({ratio:,.2f}% of Scarlet)')
     logger.info(msg)

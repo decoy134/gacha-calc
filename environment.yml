@@ -122,7 +122,6 @@ dependencies:
   - ruamel.yaml=0.17.21=py310h2bbff1b_0
   - ruamel.yaml.clib=0.2.6=py310h2bbff1b_1
   - ruamel_yaml=0.15.80=py310h8d17308_1008
-  - scipy=1.10.0=py310hb9afe5d_0
   - setuptools=65.6.3=py310haa95532_0
   - sip=6.7.7=py310h00ffb61_0
   - six=1.16.0=pyhd3eb1b0_1
