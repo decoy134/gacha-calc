@@ -22,6 +22,9 @@ class Util:
     def get_logger(name: str, log_file: str = None) -> logging.Logger:
         """Returns a logger using the specified name."""
         logger = logging.getLogger(name)
+        if logger.hasHandlers():
+            return logger
+        
         logger.setLevel(logging.DEBUG)
 
         # Create handlers
@@ -372,7 +375,7 @@ class NIKKE:
 
         base_mod = 1.0
         if core_hit:
-            base_mod += 0.5
+            base_mod += 1.0
         if range_bonus:
             base_mod += 0.3
         if full_burst:
@@ -384,8 +387,6 @@ class NIKKE:
         avg_mod = base_mod * (1.0 - crit_rate_p) + crit_mod * crit_rate_p
 
         final_atk = np.prod(calc.modifiers) * damage / 100.0
-        if element_bonus:
-            final_atk *= 1.1
         return final_atk * np.array([base_mod, crit_mod, avg_mod])
 
     @staticmethod
@@ -422,6 +423,96 @@ class NIKKE:
             if 'crit_dmg' in buff:
                 cache.crit_dmg += buff['crit_dmg'] * stacks
 
+    @staticmethod
+    def get_bonus_tag(
+            core_hit: bool = False,
+            range_bonus: bool = False,
+            full_burst: bool = False,
+            element_bonus: bool = False) -> str:
+        """Returns the tag corresponding to the flags."""
+        tag = ''
+        if core_hit:
+            tag += 'core_'
+        if range_bonus:
+            tag += 'range_'
+        if full_burst:
+            tag += 'fb_'
+        if element_bonus:
+            tag += 'elem_'
+        return tag[:-1] if tag != '' else 'base'
+
+    @staticmethod
+    def compute_damage_matrix(
+            damage: float,
+            attack: float,
+            defense: float,
+            buffs: list = None) -> dict:
+        """Computes the matrix of damage dealt by source to target for
+        all possibilities of core hit, range bonus, and
+        
+        Returns a 1x3 numpy array contain the no-crit, crit, and average damage.
+        
+        Currently does not take into account weakpoint damage due to confusion
+        on how and when that triggers.
+        """
+        cache = NIKKE.generate_cache(buffs)
+        ret = {
+            'matrix': np.zeros((16,3))
+        }
+        index = 0
+        flags = [False, True]
+        for core_hit in flags:
+            for range_bonus in flags:
+                for full_burst in flags:
+                    for element_bonus in flags:
+                        tag = NIKKE.get_bonus_tag(
+                            core_hit=core_hit,
+                            range_bonus=range_bonus,
+                            full_burst=full_burst,
+                            element_bonus=element_bonus)
+                        total_dmg = NIKKE.compute_damage(
+                            damage,
+                            attack,
+                            defense,
+                            core_hit=core_hit,
+                            range_bonus=range_bonus,
+                            full_burst=full_burst,
+                            element_bonus=element_bonus,
+                            cache=cache)
+                        ret[tag] = {
+                            'index': index,
+                            'base': total_dmg[0],
+                            'crit': total_dmg[1],
+                            'avg': total_dmg[2]
+                        }
+                        ret['matrix'][index] = total_dmg
+
+                        index += 1
+        return ret
+
+    @staticmethod
+    def matrix_avg_dmg(matrix: dict, tags: dict, normalize: bool = True) -> float:
+        """Sums damage from the damage matrix according to tags."""
+        total_dmg = 0.0
+        total_ratio = 0.0
+        for tag, ratio in tags.items():
+            total_dmg += matrix[tag]['avg'] * ratio
+            total_ratio += ratio
+        if normalize and total_ratio != 0:
+            total_dmg /= total_ratio
+        return total_dmg
+
+    @staticmethod
+    def accumulate_avg_dmg(
+            damage: float,
+            attack: float,
+            defense: float,
+            buffs: list,
+            tags: dict,
+            normalize: bool = True) -> float:
+        """Sums damage from the damage matrix according to tags."""
+        matrix = NIKKE.compute_damage_matrix(damage, attack, defense, buffs=buffs)
+        return NIKKE.matrix_avg_dmg(matrix, tags, normalize=normalize)
 
     @staticmethod
     def compare_element(source: str, target: str) -> bool:
@@ -436,9 +527,6 @@ class NIKKE:
         return NIKKE.element_table[source] == target
 
 
-
-logger = Util.get_logger('NIKKE_Logger')
-
 class Helpers:
     """Namespace for helper functions specific to this script."""
     @staticmethod
@@ -448,6 +536,7 @@ class Helpers:
             damage: float = None,
             ammo: float = 0.0,
             reload: float = NIKKE.cube_table['reload'][2],
+            log: bool = True,
             graph: bool = False) -> float:
         """Graphs the normal attack DPS for the given NIKKE."""
         params = config.get_normal_params(nikke_name)
@@ -460,7 +549,9 @@ class Helpers:
         peak = NIKKE.compute_peak_normal_dps(params['damage'], params['weapon'])
         ratio = dps / peak * 100
         message = f'{nikke_name} Normal Attack DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
-        logger.info(message)
+
+        if log:
+            Util.get_logger('NIKKE_Logger').info(message)
 
         # Add a plot for this graph
         if graph:
@@ -482,11 +573,12 @@ class Helpers:
 
 def main() -> int:
     """Main function."""
+    logger = Util.get_logger('NIKKE_Logger')
     config = NIKKE.Config()
     params = {
         'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
-        'attack': config.get_nikke_attack('Scarlet'),
-        'defense': config.get_enemy_defense('shooting_range'),
+        'attack': config.get_nikke_attack('Modernia'),
+        'defense': config.get_enemy_defense('special_interception'),
     }
     config.add_skill_1('Scarlet')
     config.add_skill_1('Scarlet')
@@ -502,6 +594,7 @@ def main() -> int:
 
     dmg_cache = NIKKE.generate_cache(scarlet_fb_buffs)
     values = NIKKE.compute_damage(**params, cache=dmg_cache)
+    scar_b_avg_dmg = values[2]
 
     logger.info('Scarlet burst damage based on the following stats:\
                 \n  - ATK: %d\
@@ -518,108 +611,121 @@ def main() -> int:
         for j in range(data.shape[1]):
             data[i][j] = 1 + i * 0.1 + j * 0.1
 
+    ammo = 152.50
     scar_n = Helpers.compute_normal_attack_dps(
         config,
         'Scarlet',
-        ammo=52.50,
+        ammo=ammo,
         graph=False)
     mod_n = Helpers.compute_normal_attack_dps(
         config,
         'Modernia',
-        ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+52.50,
+        ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+ammo,
         graph=False)
+    logger.info('This next value is actually the multiplier per second of Modernia S1:')
     mod_s1 = Helpers.compute_normal_attack_dps(
         config,
         'Modernia',
         damage=config.config['nikkes']['Modernia']['skill_1']['effect']['damage'],
-        ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+52.50,
+        ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+ammo,
         graph=False)
 
     # Scarlet attack dps calculation
+    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True)
+    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True, core_hit=True)
+    tag_profile = {
+        base_tag: 0.80,
+        core_tag: 0.20
+    }
     params = {
         'damage': scar_n,
-        'attack': config.get_nikke_attack('Scarlet'),
+        'attack': config.get_nikke_attack('Modernia'),
         'defense': config.get_enemy_defense('special_interception'),
-        'core_hit': False,
-        'range_bonus': False,
-        'full_burst': True,
-        'element_bonus': False,
+        'buffs': scarlet_fb_buffs
     }
-    dmg_cache = NIKKE.generate_cache(scarlet_fb_buffs)
-    avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
-    params['core_hit'] = True
-    core_avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
+    total_avg_dmg = NIKKE.accumulate_avg_dmg(**params, tags=tag_profile) * 4.5
+    save_dmg_2 = total_avg_dmg
 
-    total_avg_dmg = avg_dmg * 0.6 + core_avg_dmg * 0.4
-
-    # custom buff list
-    custom_buffs = [{
+    params['buffs'] = [{
         'type': 'buff',
         'attack': 23.15*5,
         'crit_rate': 17.12,
         'crit_dmg': 5.78,
     }]
-    params = {
-        'damage': scar_n,
-        'attack': config.get_nikke_attack('Scarlet'),
-        'defense': config.get_enemy_defense('special_interception'),
-        'core_hit': False,
-        'range_bonus': False,
-        'full_burst': True,
-        'element_bonus': False,
-    }
-    dmg_cache = NIKKE.generate_cache(custom_buffs)
-    avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
-    params['core_hit'] = True
-    core_avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags=tag_profile) * 5.5
+    save_dmg_2 += NIKKE.accumulate_avg_dmg(**params, tags=tag_profile) * 10.5
+    total_avg_dmg += scar_b_avg_dmg
 
-    total_avg_dmg += avg_dmg * 0.6 + core_avg_dmg * 0.4
+    save_dmg = total_avg_dmg
+    dps = total_avg_dmg / 10
+    msg = f'Scarlet Average Damage (Includes Burst) = {total_avg_dmg:,.2f} ({dps:,.2f} damage/s)'
+    logger.info(msg)
 
-    msg = f'Scarlet Average Damage = {total_avg_dmg:,.2f}'
+    dps = save_dmg_2 / 15
+    msg = f'Scarlet Average Damage During Modernia Burst = {save_dmg_2:,.2f} ({dps:,.2f} damage/s)'
     logger.info(msg)
 
     # Modernia attack dps calculation
+    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True)
+    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=True, core_hit=True)
     params = {
         'damage': mod_n,
         'attack': config.get_nikke_attack('Modernia'),
         'defense': config.get_enemy_defense('special_interception'),
-        'core_hit': True,
-        'range_bonus': False,
-        'full_burst': True,
-        'element_bonus': False,
+        'buffs': [{
+            'type': 'buff',
+            'attack': 29.38+66+14.42,
+            'crit_dmg': 14.42+14.25*5,
+        }]
     }
-    custom_buffs = [{
-        'type': 'buff',
-        'attack': 29.38+66+14.42,
-        'crit_dmg': 14.42+14.25*5,
-    }]
-    dmg_cache = NIKKE.generate_cache(custom_buffs)
-    total_avg_dmg = NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
+    total_avg_dmg = NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 4.5
     params['damage'] = mod_s1
-    params['core_hit'] = False
-    total_avg_dmg += NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 4.5
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 4.5
 
-    params = {
-        'damage': mod_n,
-        'attack': config.get_nikke_attack('Modernia'),
-        'defense': config.get_enemy_defense('special_interception'),
-        'core_hit': True,
-        'range_bonus': False,
-        'full_burst': True,
-        'element_bonus': False,
-    }
-    custom_buffs = [{
+    params['buffs'] = [{
         'type': 'buff',
         'attack': 29.38,
         'crit_dmg': 14.25*5,
     }]
-    dmg_cache = NIKKE.generate_cache(custom_buffs)
-    total_avg_dmg += NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
-    params['damage'] = mod_s1
-    params['core_hit'] = False
-    total_avg_dmg += NIKKE.compute_damage(**params, cache=dmg_cache)[2] * 5.5
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 5.5
+    params['damage'] = mod_n
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 5.5
 
-    msg = f'Modernia Average Damage = {total_avg_dmg:,.2f}'
+    dps = total_avg_dmg / 10
+    ratio = total_avg_dmg / save_dmg * 100
+    msg = (f'Modernia Average Damage = {total_avg_dmg:,.2f} '
+           f'({dps:,.2f} damage/s) ({ratio:,.2f}% of Scarlet)')
+    logger.info(msg)
+
+    # Modernia burst attack dps calculation
+    mod_b = 2.24 * 2 * NIKKE.weapon_table['MG']['attack_speed']
+    params = {
+        'damage': mod_b,
+        'attack': config.get_nikke_attack('Modernia'),
+        'defense': config.get_enemy_defense('special_interception'),
+        'buffs': [{
+            'type': 'buff',
+            'attack': 29.38+66+14.42,
+            'crit_dmg': 14.42+14.25*5,
+        }]
+    }
+    total_avg_dmg = NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 4.5
+    params['damage'] = 3.05 * NIKKE.weapon_table['MG']['attack_speed']
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 4.5
+
+    params['buffs'] = [{
+        'type': 'buff',
+        'attack': 29.38,
+        'crit_dmg': 14.25*5,
+    }]
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={base_tag: 1.0}) * 10.5
+    params['damage'] = mod_b
+    total_avg_dmg += NIKKE.accumulate_avg_dmg(**params, tags={core_tag: 1.0}) * 10.5
+
+    dps = total_avg_dmg / 15
+    ratio = total_avg_dmg / save_dmg_2 * 100
+    msg = (f'Modernia Burst Average Damage = {total_avg_dmg:,.2f} '
+           f'({dps:,.2f} damage/s) ({ratio:,.2f}% of Scarlet)')
     logger.info(msg)
 
     return 0

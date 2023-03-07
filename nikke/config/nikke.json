@@ -141,10 +141,60 @@
                 "type": "buff",
                 "target": "allies",
                 "effect": {
-                    "type": "buff",
-                    "attack": 66,
+                    "type": "continuous_damage",
+                    "target": "enemies",
+                    "damage": 2.24,
                     "duration": 15
                 }
+            }
+        },
+        "Dolla": {
+            "element": "wind",
+            "max_health": 1130154,
+            "attack": 36438,
+            "defense": 7439,
+            "role": "supporter",
+            "manufacturer": "tetra",
+            "weapon": "SR",
+            "ammo": 6,
+            "charge_time": 1,
+            "charge_damage": 250,
+            "normal": 69.04,
+            "reload": 2.0,
+            "skill_1": {
+                "type": "active_buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "attack": 12.12,
+                    "duration": 5
+                }
+            },
+            "skill_2": {
+                "type": "ramping_buff",
+                "target": "allies",
+                "effect": [
+                    {
+                        "type": "buff",
+                        "attack": 4.09,
+                        "duration": 5
+                    },
+                    {
+                        "type": "buff",
+                        "crit_rate": 2.45,
+                        "duration": 5
+                    },
+                    {
+                        "type": "buff",
+                        "crit_dmg": 8.02,
+                        "duration": 5
+                    }
+                ]
+            },
+            "burst": {
+                "type": "initial_damage",
+                "target": "enemies",
+                "damage": 551.02
             }
         }
     },
