@@ -190,6 +190,11 @@ class NIKKE:
             'wind_up_seconds': 0.0,
             'wind_up_ammo': 0
         },
+        'SR': {
+            'attack_speed': 2.4,
+            'wind_up_seconds': 0,
+            'wind_up_ammo': 0
+        },
         'MG': {
             'attack_speed': 52,
             'wind_up_seconds': 2,
@@ -372,6 +377,10 @@ class NIKKE:
         modifiers: np.array
         crit_rate: float = 15
         crit_dmg: float = 50
+        core_hit: bool = False,
+        range_bonus: bool = False,
+        full_burst: bool = False,
+        element_bonus: bool = False,
 
     @staticmethod
     def compute_normal_dps(
@@ -432,16 +441,17 @@ class NIKKE:
         calc.modifiers[0] = attack * calc.modifiers[0] / 100.0 - defense * calc.modifiers[5] / 100.0
         calc.modifiers[1] /= 100.0
         calc.modifiers[2] /= 100.0
-        calc.modifiers[3] = 1.0 if not element_bonus else calc.modifiers[3] / 100.0
+        calc.modifiers[3] = 1.0 if not element_bonus and not calc.element_bonus \
+            else calc.modifiers[3] / 100.0
         calc.modifiers[4] /= 100.0
         calc.modifiers[5] = 1.0
 
         base_mod = 1.0
-        if core_hit:
+        if core_hit or calc.core_hit:
             base_mod += 1.0
-        if range_bonus:
+        if range_bonus or calc.range_bonus:
             base_mod += 0.3
-        if full_burst:
+        if full_burst or calc.full_burst:
             base_mod += 0.5
 
         crit_rate_p = calc.crit_rate / 100.0
@@ -461,8 +471,7 @@ class NIKKE:
         """
         cache = NIKKE.CachedModifiers(
             np.array([100.0, 100.0, 100.0, 110.0, 100.0, 100.0]),
-            crit_rate,
-            crit_dmg)
+            crit_rate,crit_dmg, False, False, False, False)
         NIKKE.update_cache(buffs, cache)
         return cache
 
@@ -489,6 +498,15 @@ class NIKKE:
                 cache.crit_rate += buff['crit_rate'] * stacks
             if 'crit_dmg' in buff:
                 cache.crit_dmg += buff['crit_dmg'] * stacks
+            # Bonus override flags
+            if 'core_hit' in buff:
+                cache.core_hit = buff['core_hit']
+            if 'range_bonus' in buff:
+                cache.range_bonus = buff['range_bonus']
+            if 'full_burst' in buff:
+                cache.full_burst = buff['full_burst']
+            if 'element_bonus' in buff:
+                cache.full_burst = buff['element_bonus']
 
     @staticmethod
     def get_bonus_tag(
@@ -766,7 +784,8 @@ class Helpers:
             window_end: float,
             name: str = 'NIKKE',
             relative_dps: float = None,
-            relative_name: str = None) -> float:
+            relative_name: str = None,
+            verbose=False) -> float:
         """Returns the average DPS of a NIKKE."""
         logger = Util.get_logger('NIKKE_Logger')
         total_avg_dmg = NIKKE.compute_dps_window(
@@ -777,6 +796,15 @@ class Helpers:
             window_start=window_start,
             window_end=window_end)
         dps = total_avg_dmg / (window_end - window_start)
+
+        if verbose:
+            duration = window_end - window_start
+            msg = f'{name} Average DPS based on the following stats:\
+                \n  - ATK: {attack}\
+                \n  - Enemy DEF: {defense}\
+                \n  - Duration: {duration:.2f}'
+            logger.debug(msg)
+
         msg = f'{name} Average Damage = {total_avg_dmg:,.2f} ({dps:,.2f} damage/s)'
         if relative_dps is not None:
             ratio = dps / relative_dps * 100.0
@@ -803,8 +831,14 @@ def main() -> int:
     for start in burst_times:
         config.add_skill_1('Liter', start=start-0.5, depth=3)
         config.add_burst('Liter', start=start-0.5)
-        config.add_burst('Novel', start=start+1.5)
+        #config.add_burst('Novel', start=start+1.5)
         base_buffs += config.get_buff_list()
+        base_buffs.append({
+            'full_burst': True,
+            'start': start,
+            'end': start + 10,
+            'duration': 10
+        })
         config.clear_buffs()
 
     # Scarlet buffs
@@ -814,13 +848,13 @@ def main() -> int:
     config.add_burst('Scarlet', start=burst_times[0])
     scar_buffs = base_buffs + config.get_buff_list()
     config.clear_buffs()
-    logger.debug(scar_buffs)
 
     # Modernia buffs
     for _ in range(5):
         config.add_skill_1('Modernia', duration=math.inf)
     config.add_skill_2('Modernia', duration=math.inf)
     mod_buffs = base_buffs + config.get_buff_list()
+    logger.debug(mod_buffs)
 
     logger.info('=======================================================')
     Helpers.compute_actual_damage(**params, buffs=scar_buffs)
@@ -836,21 +870,39 @@ def main() -> int:
         config, 'Modernia', graph=False, atk_name='S1',
         damage=config.config['nikkes']['Modernia']['skill_1']['effect']['damage'],
         ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+ammo)
+    max_n = Helpers.compute_normal_attack_dps(
+        config, 'Maxwell', ammo=ammo, graph=False)
+    alice_n = Helpers.compute_normal_attack_dps(
+        config, 'Alice', ammo=ammo, graph=False)
     logger.info('=======================================================')
 
+    # Set up weapon tags
+    ar_range_bonus = False
+    mg_range_bonus = False
+    sr_range_bonus = False
+    core_hit = False
+    ar_base_tag = NIKKE.get_bonus_tag(range_bonus=ar_range_bonus)
+    ar_core_tag = NIKKE.get_bonus_tag(range_bonus=ar_range_bonus, core_hit=core_hit)
+    mg_core_tag = NIKKE.get_bonus_tag(range_bonus=mg_range_bonus, core_hit=core_hit)
+    sr_base_tag = NIKKE.get_bonus_tag(range_bonus=sr_range_bonus)
+    sr_core_tag = NIKKE.get_bonus_tag(range_bonus=sr_range_bonus, core_hit=core_hit)
+    mod_s1_tag = NIKKE.get_bonus_tag(range_bonus=False)
+    ar_tag_profile = {
+        ar_base_tag: 0.8,
+        ar_core_tag: 0.2
+    }
+    mg_tag_profile = {mg_core_tag: 1.0}
+    sr_tag_profile = {
+        sr_base_tag: 0.5,
+        sr_core_tag: 0.5,
+    }
 
     # Scarlet attack dps calculation
-    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False)
-    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False, core_hit=True)
-    tag_profile = {
-        base_tag: 0.50,
-        core_tag: 0.50
-    }
     scar_avg_dps = Helpers.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
-                'start': 0.0,
+                'start': burst_times[-1] - 0.1,
                 'duration': 0,
                 'tags': {'base': 1.0},
             },
@@ -858,7 +910,7 @@ def main() -> int:
                 'damage': scar_n,
                 'start': -math.inf,
                 'duration': math.inf,
-                'tags': tag_profile,
+                'tags': ar_tag_profile,
             },
         ],
         attack=config.get_nikke_attack('Modernia'),
@@ -866,25 +918,24 @@ def main() -> int:
         buffs=scar_buffs,
         window_start=0,
         window_end=burst_times[-1],
-        name='Scarlet (Self Burst)'
+        name='Scarlet (Self Burst)',
+        verbose=False
     )
 
     # Modernia attack dps calculation
-    base_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False)
-    core_tag = NIKKE.get_bonus_tag(full_burst=True, range_bonus=False, core_hit=True)
     Helpers.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': mod_n,
                 'start': -math.inf,
                 'duration': math.inf,
-                'tags': {core_tag: 1.0},
+                'tags': mg_tag_profile,
             },
             {
                 'damage': mod_s1,
                 'start': -math.inf,
                 'duration': math.inf,
-                'tags': {base_tag: 1.0},
+                'tags': {mod_s1_tag: 1.0},
             },
         ],
         attack=config.get_nikke_attack('Modernia'),
@@ -897,12 +948,30 @@ def main() -> int:
         relative_name='Scarlet'
     )
 
-    # Snow White Calculation
+    # Snow White, Maxwell, and Alice Calculation
     mx_buffs = base_buffs
     for start in burst_times:
         config.add_skill_1('Maxwell', start=start)
         mx_buffs = mx_buffs + config.get_buff_list()
         config.clear_buffs()
+
+    alice_dmg_tags = [
+        {
+            'damage': alice_n * 3.57,
+            'start': burst_times[0],
+            'duration': 10,
+            'tags': sr_tag_profile
+        },
+        {
+            'damage': alice_n * (1 + 2.5 / (NIKKE.weapon_table['SR']['attack_speed'] * 1.5)),
+            'start': burst_times[0] + 10,
+            'duration': math.inf,
+            'tags': sr_tag_profile
+        }
+    ]
+    config.add_burst('Alice', start=burst_times[0])
+    alice_buffs = mx_buffs + config.get_buff_list()
+    config.clear_buffs()
 
     reload_t = 1.5*(1 - NIKKE.cube_table['reload'][2] / 100.0)
     b_fire_t = burst_times[0] + 4.0
@@ -921,25 +990,25 @@ def main() -> int:
             'damage': 499.5 * 9,
             'start': b_fire_t,
             'duration': 0,
-            'tags': {core_tag: 1.0},
+            'tags': {ar_core_tag: 1.0},
         },
         {
             'damage': sw_n,
             'start': restart_t,
             'duration': math.inf,
-            'tags': tag_profile,
+            'tags': ar_tag_profile,
         },
         {
             'damage': 126.64,
             'start': 2.0,
             'duration': 0,
-            'tags': {'fb': 1.0},
+            'tags': {'base': 1.0},
         },
         {
             'damage': 126.64,
             'start': 17.0,
             'duration': 0,
-            'tags': {'fb': 1.0},
+            'tags': {'base': 1.0},
         }
     ]
     for i in range(10):
@@ -947,18 +1016,19 @@ def main() -> int:
             'damage': 65.55,
             'start': s1_trigger_t + s1_trigger_req * i,
             'duration': 0,
-            'tags': {'fb': 1.0},
+            'tags': {'base': 1.0},
         })
     Helpers.compute_nikke_dps(
         damage_tags=sw_dmg_tags,
-        attack=config.get_nikke_attack('Maxwell'),
+        attack=config.get_nikke_attack('Snow White'),
         defense=config.get_enemy_defense('special_interception'),
         buffs=sw_buffs,
         window_start=0,
         window_end=burst_times[-1],
-        name='Snow White Burst',
+        name='Snow White',
         relative_dps=scar_avg_dps,
-        relative_name='Scarlet'
+        relative_name='Scarlet',
+        verbose=False
     )
     Helpers.compute_nikke_dps(
         damage_tags=[
@@ -966,13 +1036,13 @@ def main() -> int:
                 'damage': 813.42 * 3,
                 'start': 2.0,
                 'duration': 0,
-                'tags': {core_tag: 1.0},
+                'tags': {sr_core_tag: 1.0},
             },
             {
-                'damage': 69.04 * 2.5,
+                'damage': max_n * (1 + 1.5 / (NIKKE.weapon_table['SR']['attack_speed'] * 1)),
                 'start': 2.5,
                 'duration': math.inf,
-                'tags': {base_tag: 0.7, core_tag: 0.3},
+                'tags': sr_tag_profile,
             },
         ],
         attack=config.get_nikke_attack('Maxwell'),
@@ -982,27 +1052,79 @@ def main() -> int:
         window_end=burst_times[-1],
         name='Maxwell',
         relative_dps=scar_avg_dps,
-        relative_name='Scarlet'
+        relative_name='Scarlet',
+        verbose=False
+    )
+    Helpers.compute_nikke_dps(
+        damage_tags=alice_dmg_tags,
+        attack=config.get_nikke_attack('Maxwell'),
+        defense=config.get_enemy_defense('special_interception'),
+        buffs=alice_buffs,
+        window_start=0,
+        window_end=burst_times[-1],
+        name='Alice',
+        relative_dps=scar_avg_dps,
+        relative_name='Scarlet',
+        verbose=False
     )
 
 
     # Modernia burst attack dps calculation
+    burst_times = [0, 18, 31]
+    base_buffs = []
+    for start in burst_times:
+        config.add_skill_1('Liter', start=start-0.5, depth=3)
+        config.add_burst('Liter', start=start-0.5)
+        config.add_burst('Novel', start=start+1.5)
+        base_buffs += config.get_buff_list()
+        duration = 15 if start == burst_times[0] else 10
+        base_buffs.append({
+            'full_burst': True,
+            'start': start,
+            'end': start + duration,
+            'duration': duration
+        })
+        config.clear_buffs()
+
+    # Scarlet buffs
+    for _ in range(5):
+        config.add_skill_1('Scarlet', duration=math.inf)
+    config.add_skill_2('Scarlet', duration=math.inf)
+    config.add_burst('Scarlet', start=burst_times[1])
+    scar_buffs = base_buffs + config.get_buff_list()
+    config.clear_buffs()
+
+    # Modernia buffs
+    for _ in range(5):
+        config.add_skill_1('Modernia', duration=math.inf)
+    config.add_skill_2('Modernia', duration=math.inf)
+    mod_buffs = base_buffs + config.get_buff_list()
+
     logger.info('=======================================================')
-    scar_dmg_mod_burst = Helpers.compute_nikke_dps(
+    Helpers.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': scar_n,
                 'start': -math.inf,
                 'duration': math.inf,
-                'tags': tag_profile,
+                'tags': ar_tag_profile,
+            },
+            {
+                'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
+                'start': burst_times[-1] - 0.1,
+                'duration': 0,
+                'tags': {'base': 1.0},
             },
         ],
         attack=config.get_nikke_attack('Modernia'),
         defense=config.get_enemy_defense('special_interception'),
         buffs=scar_buffs,
         window_start=0,
-        window_end=15,
-        name='Scarlet (Modernia Burst)'
+        window_end=burst_times[-1],
+        name='Scarlet (Modernia Burst)',
+        relative_dps=scar_avg_dps,
+        relative_name='Normal',
+        verbose=False
     )
     mod_b = 2.24 * 2 * NIKKE.weapon_table['MG']['attack_speed']
     mod_s1_b = 3.05 * NIKKE.weapon_table['MG']['attack_speed']
@@ -1012,23 +1134,24 @@ def main() -> int:
                 'damage': mod_b,
                 'start': 0.0,
                 'duration': math.inf,
-                'tags': {core_tag: 1.0},
+                'tags': mg_tag_profile,
             },
             {
                 'damage': mod_s1_b,
                 'start': 0.0,
                 'duration': math.inf,
-                'tags': {base_tag: 1.0},
+                'tags': {mod_s1_tag: 1.0},
             },
         ],
         attack=config.get_nikke_attack('Modernia'),
         defense=config.get_enemy_defense('special_interception'),
         buffs=mod_buffs,
         window_start=0,
-        window_end=15,
+        window_end=burst_times[-1],
         name='Modernia Burst',
-        relative_dps=scar_dmg_mod_burst,
-        relative_name='Scarlet'
+        relative_dps=scar_avg_dps,
+        relative_name='Normal Scarlet',
+        verbose=False
     )
 
     return 0

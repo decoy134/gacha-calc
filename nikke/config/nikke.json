@@ -380,6 +380,43 @@
                     "full_charge_damage": 300
                 }
             }
+        },
+        "Alice": {
+            "element": "fire",
+            "max_health": 1055833,
+            "attack": 44781,
+            "defense": 6409,
+            "role": "attacker",
+            "manufacturer": "tetra",
+            "weapon": "SR",
+            "ammo": 6,
+            "normal": 69.04,
+            "charge_time": 1.5,
+            "full_charge_damage": 350,
+            "reload": 2,
+            "skill_1": {
+                "type": "conditional_buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "attack": 43.1,
+                    "charge_speed": 11.67,
+                    "charge_damage": 7,
+                    "duration": 10
+                }
+            },
+            "skill_2": {
+            },
+            "burst": {
+                "type": "buff",
+                "target": "self",
+                "effect": {
+                    "type": "buff",
+                    "attack": 55.12,
+                    "charge_speed": 80.15,
+                    "duration": 10
+                }
+            }
         }
     },
     "enemies": {
