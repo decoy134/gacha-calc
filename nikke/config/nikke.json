@@ -160,10 +160,10 @@
             "normal": 14.71,
             "reload": 1.5,
             "skill_1": {
-                "type": "buff",
+                "type": "conditional_buff",
                 "target": "self",
                 "effect": {
-                    "type": "conditional_buff",
+                    "type": "buff",
                     "damage": 65.55,
                     "attack": 6.55,
                     "duration": 5
@@ -207,6 +207,7 @@
             "skill_1": {
                 "type": "active_buff",
                 "target": "allies",
+                "cooldown": 10,
                 "effect": {
                     "type": "buff",
                     "attack": 12.12,
@@ -238,6 +239,146 @@
                 "type": "initial_damage",
                 "target": "enemies",
                 "damage": 551.02
+            }
+        },
+        "Novel": {
+            "element": "iron",
+            "max_health": 1177621,
+            "attack": 27849,
+            "defense": 7229,
+            "role": "defender",
+            "manufacturer": "tetra",
+            "weapon": "SMG",
+            "ammo": 120,
+            "normal": 8.1,
+            "reload": 1.0,
+            "skill_1": {
+                "type": "active_debuff",
+                "target": "enemies",
+                "effect": [
+                    {
+                        "type": "buff",
+                        "defense": -4.7,
+                        "duration": 5
+                    },
+                    {
+                        "type": "damage",
+                        "damage": 34.9
+                    }
+                ]
+            },
+            "skill_2": {
+                "type": "stacking_buff",
+                "target": "self",
+                "stack": 5,
+                "effect": {
+                    "type": "buff",
+                    "defense": 9.0,
+                    "duration": 15
+                }
+            },
+            "burst": {
+                "type": "debuff",
+                "target": "enemies",
+                "effect": [
+                    {
+                        "type": "initial_damage",
+                        "target": "enemies",
+                        "damage": 330.61
+                    },
+                    {
+                        "type": "buff",
+                        "damage_taken": 67.5,
+                        "duration": 5
+                    }
+                ]
+            }
+        },
+        "Admi": {
+            "element": "wind",
+            "max_health": 1010769,
+            "attack": 32668,
+            "defense": 6137,
+            "role": "supporter",
+            "manufacturer": "missilis",
+            "weapon": "SR",
+            "ammo": 6,
+            "normal": 67.37,
+            "charge_time": 1,
+            "full_charge_damage": 250,
+            "reload": 1.73,
+            "skill_1": {
+                "type": "conditional_buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "charge_damage": 6.4,
+                    "duration": 20
+                }
+            },
+            "skill_2": {
+                "type": "active_buff",
+                "target": "self",
+                "cooldown": 20,
+                "effect": {
+                    "type": "buff",
+                    "damage_taken": -19.1,
+                    "duration": 10
+                }
+            },
+            "burst": {
+                "type": "buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "reload": 39.6,
+                    "crit_dmg": 22.04,
+                    "duration": 10
+                }
+            }
+        },
+        "Maxwell": {
+            "element": "iron",
+            "max_health": 1055833,
+            "attack": 44781,
+            "defense": 6409,
+            "role": "attacker",
+            "manufacturer": "missilis",
+            "weapon": "SR",
+            "ammo": 6,
+            "normal": 69.04,
+            "charge_time": 1,
+            "full_charge_damage": 250,
+            "reload": 2,
+            "skill_1": {
+                "type": "conditional_buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "attack": 43.1,
+                    "charge_speed": 4.48,
+                    "duration": 10
+                }
+            },
+            "skill_2": {
+                "type": "conditional_buff",
+                "target": "self",
+                "effect": {
+                    "type": "buff",
+                    "crit_dmg": 10.12,
+                    "crit_rate": 3.51
+                }
+            },
+            "burst": {
+                "type": "extra_damage",
+                "target": "enemies",
+                "effect": {
+                    "type": "charge_shot",
+                    "target": "enemies",
+                    "damage": 813.42,
+                    "charge_time": 2,
+                    "full_charge_damage": 300
+                }
             }
         }
     },
