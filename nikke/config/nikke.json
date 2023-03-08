@@ -183,7 +183,7 @@
                 "type": "extra_damage",
                 "target": "enemies",
                 "effect": {
-                    "type": "pierce_shot",
+                    "type": "charge_shot",
                     "target": "enemies",
                     "damage": 499.5,
                     "charge_time": 5,

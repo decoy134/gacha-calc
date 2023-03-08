@@ -3,7 +3,6 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - appdirs=1.4.4=pyhd3eb1b0_0
   - astroid=2.14.2=py310haa95532_0
   - attrs=22.2.0=pyh71513ae_0
   - blas=1.0=mkl
@@ -22,7 +21,6 @@ dependencies:
   - cryptography=38.0.3=py310h6e82f81_0
   - cycler=0.11.0=pyhd8ed1ab_0
   - dill=0.3.6=py310haa95532_0
-  - fftw=3.3.9=h2bbff1b_1
   - flit-core=3.6.0=pyhd3eb1b0_0
   - fmt=9.1.0=h181d51b_0
   - fonttools=4.38.0=py310h8d17308_1
@@ -32,7 +30,6 @@ dependencies:
   - glib-tools=2.74.1=h12be248_1
   - gst-plugins-base=1.21.3=h001b923_1
   - gstreamer=1.21.3=h6b5321d_1
-  - icc_rt=2022.1.0=h6049295_2
   - icu=70.1=h0e60522_0
   - idna=3.4=pyhd8ed1ab_0
   - importlib-metadata=6.0.0=pyha770c72_0
@@ -100,7 +97,6 @@ dependencies:
   - platformdirs=2.5.2=py310haa95532_0
   - pluggy=1.0.0=py310haa95532_1
   - ply=3.11=py_1
-  - pooch=1.4.0=pyhd3eb1b0_0
   - pthread-stubs=0.4=hcd874cb_1001
   - pybind11-abi=4=hd8ed1ab_3
   - pycosat=0.6.4=py310h8d17308_1
