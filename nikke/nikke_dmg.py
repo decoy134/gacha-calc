@@ -807,7 +807,7 @@ class Examples:
             verbose=False) -> float:
         """Returns the average DPS of a NIKKE."""
         logger = NIKKEUtil.get_logger('NIKKE_Logger')
-        total_avg_dmg = NIKKE.compute_dps_window_n2(
+        total_avg_dmg = NIKKE.compute_dps_window(
             damage_tags=damage_tags,
             attack=attack,
             defense=defense,
