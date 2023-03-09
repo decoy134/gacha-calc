@@ -850,7 +850,7 @@ def main() -> int:
     for start in burst_times:
         config.add_skill_1('Liter', start=start-0.5, depth=3)
         config.add_burst('Liter', start=start-0.5)
-        #config.add_burst('Novel', start=start+1.5)
+        config.add_burst('Novel', start=start+1.5)
         base_buffs += config.get_buff_list()
         base_buffs.append({
             'full_burst': True,
@@ -873,7 +873,6 @@ def main() -> int:
         config.add_skill_1('Modernia', duration=math.inf)
     config.add_skill_2('Modernia', duration=math.inf)
     mod_buffs = base_buffs + config.get_buff_list()
-    logger.debug(mod_buffs)
 
     logger.info('=======================================================')
     Examples.compute_actual_damage(**params, buffs=scar_buffs)
