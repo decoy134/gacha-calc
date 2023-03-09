@@ -2,59 +2,13 @@
 
 import copy
 import math
-import logging
-import json
-import os
-from dataclasses import dataclass
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-class Util:
-    """Utility namespace for static functions."""
-    @staticmethod
-    def get_default_config() -> str:
-        """Loads the default configuration for this script."""
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(this_dir, 'config', 'nikke.json')
-
-    @staticmethod
-    def get_logger(name: str, log_file: str = None) -> logging.Logger:
-        """Returns a logger using the specified name."""
-        logger = logging.getLogger(name)
-        if logger.hasHandlers():
-            return logger
-
-        logger.setLevel(logging.DEBUG)
-
-        # Create handlers
-        c_handler = logging.StreamHandler()
-        c_handler.setLevel(logging.DEBUG)
-
-        # Create formatters and add it to handlers
-        #c_format = logging.Formatter('[%(name)s | %(levelname)s] (%(asctime)s) %(message)s')
-        c_format = logging.Formatter('%(message)s')
-
-        c_handler.setFormatter(c_format)
-
-        # Add handlers to the logger
-        logger.addHandler(c_handler)
-
-        if log_file is not None:
-            # Create handlers
-            f_handler = logging.FileHandler(log_file)
-            f_handler.setLevel(logging.ERROR)
-
-            # Create formatters and add it to handlers
-            f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            f_handler.setFormatter(f_format)
-
-            # Add handlers to the logger
-            logger.addHandler(f_handler)
-
-        return logger
-
+# pylint: disable=import-error
+from nikke_config import NIKKEConfig, NIKKEUtil
 
 class Graphs:
     """Graphing namespace for creating charts."""
@@ -212,175 +166,136 @@ class NIKKE:
         'assault': [0.0, 2.54, 3.81, 5.09],
     }
 
-    class Config:
-        """Manager object for searching the NIKKE JSON configuration file."""
-        def __init__(self, fname: str = Util.get_default_config()):
-            with open(fname, 'r', encoding='utf-8') as config_file:
-                self.config = json.load(config_file)
-            self.buffs = {}
-
-        def get_buff_list(self) -> list:
-            """Flattens the buff list for damage calculation parsing."""
-            ret = []
-            for item in self.buffs.values():
-                if isinstance(item, list):
-                    ret += item
-                else:
-                    ret.append(item)
-            return ret
-
-        def get_normal_params(self, name: str) -> dict:
-            """Returns a dictionary containing the relevant normal attack parameters."""
-            return {
-                "damage": self.get_normal_damage(name),
-                "ammo": self.get_ammo_capacity(name),
-                "reload": self.get_reload_seconds(name),
-                "weapon": self.get_weapon_type(name),
-            }
-
-        def get_nikke_attack(self, name: str) -> float:
-            """Returns a NIKKE's attack value from the configuration file."""
-            return self.config['nikkes'][name]['attack']
-
-        def get_enemy_defense(self, name: str) -> float:
-            """Returns an enemy's defense value from the configuration file."""
-            return self.config['enemies'][name]['defense']
-
-        def get_weapon_type(self, name: str) -> str:
-            """Returns the base ammo capacity of a specific Nikke."""
-            return self.config['nikkes'][name]['weapon']
-
-        def get_ammo_capacity(self, name: str) -> int:
-            """Returns the base ammo capacity of a specific Nikke."""
-            return self.config['nikkes'][name]['ammo']
-
-        def get_normal_damage(self, name: str) -> float:
-            """Returns the normal attack damage of a specific Nikke."""
-            return self.config['nikkes'][name]['normal']
-
-        def get_reload_seconds(self, name: str) -> float:
-            """Returns the base ammo capacity of a specific Nikke."""
-            return self.config['nikkes'][name]['reload']
-
-        def add_skill_1(
-                self,
-                name: str,
-                depth: int = None,
-                start: float = 0.0,
-                duration: float = None):
-            """Adds any buffs from a NIKKE's Skill 1 to the buff list.
-            
-            Forwards the data to __pre_add_buff with the 'skill_1' key.
-            """
-            self.__pre_add_buff('skill_1', f'{name}_S1', name, depth, start, duration)
-
-        def add_skill_2(
-                self,
-                name: str,
-                depth: int = None,
-                start: float = 0.0,
-                duration: float = None):
-            """Adds any buffs from a NIKKE's Skill 2 to the buff list.
-            
-            Forwards the data to __pre_add_buff with the 'skill_2' key.
-            """
-            self.__pre_add_buff('skill_2', f'{name}_S2', name, depth, start, duration)
-
-        def add_burst(
-                self,
-                name: str,
-                depth: int = None,
-                start: float = 0.0,
-                duration: float = None):
-            """Adds any buffs from a NIKKE's Burst to the buff list.
-            
-            Forwards the data to __pre_add_buff with the 'burst' key.
-            """
-            self.__pre_add_buff('burst', f'{name}_B', name, depth, start, duration)
-
-
-        @staticmethod
-        def update_effect_duration(effect, start, duration):
-            """Updates an effect by reference according to its start and duration."""
-            if duration is not None:
-                effect['duration'] = duration
-            effect['start'] = start
-            effect['end'] = start + effect.get('duration', math.inf)
-            return effect
-
-        def __pre_add_buff(
-                self,
-                skill_type: str,
-                key: str,
-                name: str,
-                depth: int = None,
-                start: float = 0.0,
-                duration: float = None):
-            """Adds any buffs from a NIKKE's skill key to the buff list.
-
-            If the buff does not exist in the buff list, then it calls the next
-            __add_buff utility to add it to the buff list.
-            
-            This function checks if the buff already exists in the buff list
-            and whether it is stackable. If it is, it increases the buffs stack count.
-            
-            It also updates the buff's start, end, and duration metadata.
-            """
-            skill = self.config['nikkes'][name][skill_type]
-            if key not in self.buffs:
-                self.__add_buff(skill['effect'], key, depth, start, duration)
-            elif isinstance(self.buffs[key], dict):
-                effect = self.buffs[key]
-                if skill['type'].startswith('stack'):
-                    effect['stacks'] = effect.get('stacks', 1) + 1
-                NIKKE.Config.update_effect_duration(effect, start, duration)
-
-        def __add_buff(
-                self,
-                effect: list or dict,
-                key: str,
-                depth: int = None,
-                start: float = 0.0,
-                duration: float = None):
-            """Adds a buff to the buff list, if the effect meets the requisite conditions.
-
-            This function is called only when the buff given is not already present
-            in the current buff list.
-            """
-            if isinstance(effect, list):
-                length = len(effect)
-                if isinstance(depth, int) and depth > 0 and depth <= length:
-                    length = depth
-                self.buffs[key] = []
-                for i in range(length):
-                    if effect[i]['type'] == 'buff':
-                        self.buffs[key].append(NIKKE.Config.update_effect_duration(
-                            copy.deepcopy(effect[i]), start, duration))
-            elif effect['type'] == 'buff':
-                self.buffs[key] = NIKKE.Config.update_effect_duration(
-                    copy.deepcopy(effect), start, duration)
-
-        def clear_buffs(self):
-            """Empties the internal buff list."""
-            self.buffs = {}
-
-
     class Exceptions:
         """Exceptions namespace for NIKKE calculator."""
         class BadElement(Exception):
             """Signifies that a non-existent element was used for comparison."""
 
+    class ModifierCache:
+        """Caches calculations which do not remove buffs from the buff list.
+        
+        Do not manually generate this class. Instead, call NIKKE.generate_cache
+        instead to get properly initialized default values.
+        """
+        def __init__(
+                self,
+                modifiers: np.array,
+                crit_rate: float = 15,
+                crit_dmg: float = 50,
+                core_hit: int = 0,
+                range_bonus: int = 0,
+                full_burst: int = 0,
+                element_bonus: int = 0):
+            self.modifiers = modifiers
+            self.crit_rate = crit_rate
+            self.crit_dmg = crit_dmg
+            self.core_hit = core_hit
+            self.range_bonus = range_bonus
+            self.full_burst = full_burst
+            self.element_bonus = element_bonus
 
-    @dataclass
-    class CachedModifiers:
-        """A data class for caching calculations which do not remove buffs from the buff list."""
-        modifiers: np.array
-        crit_rate: float = 15
-        crit_dmg: float = 50
-        core_hit: bool = False,
-        range_bonus: bool = False,
-        full_burst: bool = False,
-        element_bonus: bool = False,
+        def add_buff(self, buff: dict):
+            """Updates a modifier self using a single buff.
+            
+            This function is forwarded to by the add_buffs function.
+            """
+            stacks = int(buff.get('stacks', 1))
+            if 'attack' in buff:
+                self.modifiers[0] += buff['attack'] * stacks
+            if 'charge_dmg' in buff:
+                self.modifiers[1] += buff['charge_dmg'] * stacks
+            if 'full_charge_dmg' in buff:
+                self.modifiers[1] += (buff['full_charge_dmg'] - 100) * stacks
+            if 'damage_taken' in buff:
+                self.modifiers[2] += buff['damage_taken'] * stacks
+            if 'element_dmg' in buff:
+                self.modifiers[3] += buff['element_dmg'] * stacks
+            if 'damage_up' in buff:
+                self.modifiers[4] *= 1.0 + buff['damage_up'] / 100.0 * stacks
+            if 'defense' in buff:
+                self.modifiers[5] += buff['defense'] * stacks
+            if 'crit_rate' in buff:
+                self.crit_rate += buff['crit_rate'] * stacks
+            if 'crit_dmg' in buff:
+                self.crit_dmg += buff['crit_dmg'] * stacks
+            # Bonus override flags
+            if 'core_hit' in buff:
+                val = buff['core_hit']
+                self.core_hit += val if isinstance(val, int) else 1
+            if 'range_bonus' in buff:
+                val = buff['range_bonus']
+                self.range_bonus += val if isinstance(val, int) else 1
+            if 'full_burst' in buff:
+                val = buff['full_burst']
+                self.full_burst += val if isinstance(val, int) else 1
+            if 'element_bonus' in buff:
+                val = buff['element_bonus']
+                self.full_burst += val if isinstance(val, int) else 1
+
+        def add_buffs(self, buffs: list or dict, start: int = None, end: int = None):
+            """Updates the cache using the list of buffs."""
+            if isinstance(buffs, dict):
+                self.add_buff(buffs)
+            elif isinstance(buffs, list):
+                if start is not None and end is not None:
+                    for i in range(start, end):
+                        self.add_buff(buffs[i])
+                else:
+                    for buff in buffs:
+                        self.add_buff(buff)
+
+        def remove_buff(self, buff: dict):
+            """Updates a modifier self by removing a single buff.
+            
+            This function is forwarded to by the remove_buffs function.
+            """
+            stacks = int(buff.get('stacks', 1))
+            if 'attack' in buff:
+                self.modifiers[0] -= buff['attack'] * stacks
+            if 'charge_dmg' in buff:
+                self.modifiers[1] -= buff['charge_dmg'] * stacks
+            if 'full_charge_dmg' in buff:
+                self.modifiers[1] -= (buff['full_charge_dmg'] - 100) * stacks
+            if 'damage_taken' in buff:
+                self.modifiers[2] -= buff['damage_taken'] * stacks
+            if 'element_dmg' in buff:
+                self.modifiers[3] -= buff['element_dmg'] * stacks
+            if 'damage_up' in buff:
+                self.modifiers[4] -= 1.0 + buff['damage_up'] / 100.0 * stacks
+            if 'defense' in buff:
+                self.modifiers[5] -= buff['defense'] * stacks
+            if 'crit_rate' in buff:
+                self.crit_rate -= buff['crit_rate'] * stacks
+            if 'crit_dmg' in buff:
+                self.crit_dmg -= buff['crit_dmg'] * stacks
+            # Bonus override flags
+            if 'core_hit' in buff:
+                val = buff['core_hit']
+                self.core_hit -= val if isinstance(val, int) else 1
+            if 'range_bonus' in buff:
+                val = buff['range_bonus']
+                self.range_bonus -= val if isinstance(val, int) else 1
+            if 'full_burst' in buff:
+                val = buff['full_burst']
+                self.full_burst -= val if isinstance(val, int) else 1
+            if 'element_bonus' in buff:
+                val = buff['element_bonus']
+                self.full_burst -= val if isinstance(val, int) else 1
+
+        def remove_buffs(self, buffs: list or dict, start: int = None, end: int = None):
+            """Updates the cache using the list of buffs.
+            
+            Undos the buff by calling remove_buff.
+            """
+            if isinstance(buffs, dict):
+                self.remove_buff(buffs)
+            else:
+                if start is not None and end is not None:
+                    for i in range(start, end):
+                        self.remove_buff(buffs[i])
+                else:
+                    for buff in buffs:
+                        self.remove_buff(buff)
 
     @staticmethod
     def compute_normal_dps(
@@ -417,7 +332,7 @@ class NIKKE:
             range_bonus: bool = False,
             full_burst: bool = False,
             element_bonus: bool = False,
-            cache: CachedModifiers = None) -> np.array:
+            cache: ModifierCache = None) -> np.array:
         """Computes the damage dealt by source to target.
         
         Returns a 1x3 numpy array contain the no-crit, crit, and average damage.
@@ -435,23 +350,23 @@ class NIKKE:
             buffs = []
         if cache is not None:
             calc = copy.deepcopy(cache)
-            NIKKE.update_cache(buffs, calc)
+            calc.add_buffs(buffs)
         else:
             calc = NIKKE.generate_cache(buffs)
         calc.modifiers[0] = attack * calc.modifiers[0] / 100.0 - defense * calc.modifiers[5] / 100.0
         calc.modifiers[1] /= 100.0
         calc.modifiers[2] /= 100.0
-        calc.modifiers[3] = 1.0 if not element_bonus and not calc.element_bonus \
+        calc.modifiers[3] = 1.0 if not element_bonus and calc.element_bonus <= 0 \
             else calc.modifiers[3] / 100.0
         calc.modifiers[4] /= 100.0
         calc.modifiers[5] = 1.0
 
         base_mod = 1.0
-        if core_hit or calc.core_hit:
+        if core_hit or calc.core_hit > 0:
             base_mod += 1.0
-        if range_bonus or calc.range_bonus:
+        if range_bonus or calc.range_bonus > 0:
             base_mod += 0.3
-        if full_burst or calc.full_burst:
+        if full_burst or calc.full_burst > 0:
             base_mod += 0.5
 
         crit_rate_p = calc.crit_rate / 100.0
@@ -463,50 +378,16 @@ class NIKKE:
         return final_atk * np.array([base_mod, crit_mod, avg_mod])
 
     @staticmethod
-    def generate_cache(buffs: list, crit_rate: float = 15, crit_dmg: float = 50) -> CachedModifiers:
+    def generate_cache(buffs: list, crit_rate: float = 15, crit_dmg: float = 50) -> ModifierCache:
         """Caches the modifier values and returns them in a dictionary.
         
         Use this function when looping to reduce the number of redundant
         computations from calling compute_damage() on a large buff list.
         """
-        cache = NIKKE.CachedModifiers(
-            np.array([100.0, 100.0, 100.0, 110.0, 100.0, 100.0]),
-            crit_rate,crit_dmg, False, False, False, False)
-        NIKKE.update_cache(buffs, cache)
+        cache = NIKKE.ModifierCache(
+            np.array([100.0, 100.0, 100.0, 110.0, 100.0, 100.0]), crit_rate, crit_dmg)
+        cache.add_buffs(buffs)
         return cache
-
-    @staticmethod
-    def update_cache(buffs: list, cache: CachedModifiers):
-        """Updates a modifier cache by reference."""
-        for buff in buffs:
-            stacks = int(buff.get('stacks', 1))
-            if 'attack' in buff:
-                cache.modifiers[0] += buff['attack'] * stacks
-            if 'charge_dmg' in buff:
-                cache.modifiers[1] += buff['charge_dmg'] * stacks
-            if 'full_charge_dmg' in buff:
-                cache.modifiers[1] += (buff['full_charge_dmg'] - 100) * stacks
-            if 'damage_taken' in buff:
-                cache.modifiers[2] += buff['damage_taken'] * stacks
-            if 'element_dmg' in buff:
-                cache.modifiers[3] += buff['element_dmg'] * stacks
-            if 'damage_up' in buff:
-                cache.modifiers[4] *= 1.0 + buff['damage_up'] / 100.0 * stacks
-            if 'defense' in buff:
-                cache.modifiers[5] += buff['defense'] * stacks
-            if 'crit_rate' in buff:
-                cache.crit_rate += buff['crit_rate'] * stacks
-            if 'crit_dmg' in buff:
-                cache.crit_dmg += buff['crit_dmg'] * stacks
-            # Bonus override flags
-            if 'core_hit' in buff:
-                cache.core_hit = buff['core_hit']
-            if 'range_bonus' in buff:
-                cache.range_bonus = buff['range_bonus']
-            if 'full_burst' in buff:
-                cache.full_burst = buff['full_burst']
-            if 'element_bonus' in buff:
-                cache.full_burst = buff['element_bonus']
 
     @staticmethod
     def get_bonus_tag(
@@ -531,7 +412,8 @@ class NIKKE:
             damage: float,
             attack: float,
             defense: float,
-            buffs: list = None) -> dict:
+            buffs: list or dict = None,
+            cache: ModifierCache = None) -> dict:
         """Computes the matrix of damage dealt by source to target for
         all possibilities of core hit, range bonus, and
         
@@ -540,7 +422,10 @@ class NIKKE:
         Currently does not take into account weakpoint damage due to confusion
         on how and when that triggers.
         """
-        cache = NIKKE.generate_cache(buffs)
+        if cache is not None:
+            cache.add_buffs(buffs)
+        else:
+            cache = NIKKE.generate_cache(buffs)
         ret = {
             'matrix': np.zeros((16,3))
         }
@@ -594,13 +479,35 @@ class NIKKE:
             defense: float,
             buffs: list,
             tags: dict,
-            normalize: bool = True) -> float:
+            normalize: bool = True,
+            cache: ModifierCache = None) -> float:
         """Sums damage from the damage matrix according to tags."""
-        matrix = NIKKE.compute_damage_matrix(damage, attack, defense, buffs=buffs)
+        matrix = NIKKE.compute_damage_matrix(damage, attack, defense, buffs=buffs, cache=cache)
         return NIKKE.matrix_avg_dmg(matrix, tags, normalize=normalize)
 
     @staticmethod
-    def compute_dps_window(
+    def get_unique_times(buffs, window_start, window_end):
+        """Returns the complete timeline of unique buff windows and time points."""
+        unique_times = []
+        if not math.isinf(window_start):
+            unique_times.append(window_start)
+        if not math.isinf(window_end):
+            unique_times.append(window_end)
+        for buff in buffs:
+            start = buff['start']
+            end = buff['end']
+            if not math.isinf(start) \
+                    and window_start < start < window_end \
+                    and start not in unique_times:
+                unique_times.append(start)
+            if not math.isinf(end) \
+                    and window_start < end < window_end \
+                    and end not in unique_times:
+                unique_times.append(end)
+        return np.array(unique_times, dtype=float)
+
+    @staticmethod
+    def compute_dps_window_nlogn(
             damage_tags: list,
             attack: float,
             defense: float,
@@ -622,24 +529,113 @@ class NIKKE:
         window_start manually specifies the minimum time to analyaze from.
 
         window_end manually specifies the maximum time to analyze towards.
+
+        This is the O(NlogN) variant of the algorithm, which tends to
+        perform better at N >= 800.
+        """
+        # Buffs to add sorted in chronological order
+        add_buffs = sorted(buffs, key=lambda d: d['start'])
+        # Buffs to remove sorted in chronological order
+        sub_buffs = sorted(buffs, key=lambda d: d['end'])
+
+        # Start by searching through the buff list to determine timeline
+        time_points = NIKKE.get_unique_times(add_buffs, window_start, window_end)
+
+        # Sort the timeline in chronological order
+        time_points = np.sort(time_points)
+
+        # Preinitialize the list of time point windows
+        time_windows = np.zeros((len(time_points) - 1, 2), dtype=float)
+        buff_windows = np.zeros((len(time_points) - 1, 4), dtype=int)
+        add_index = 0
+        sub_index = 0
+        prev_time = time_points[0]
+        for i in range(1, len(time_points)):
+            index = i - 1
+            curr_time = time_points[i]
+            # As this loop can only be ran a maximum of N times, it is O(N)
+            time_windows[index] = [prev_time, curr_time]
+            buff_windows[index][0] = add_index
+            buff_windows[index][2] = sub_index
+            if add_index < len(add_buffs):
+                while prev_time >= add_buffs[add_index]['start']:
+                    add_index += 1
+            if sub_index < len(sub_buffs):
+                while prev_time >= sub_buffs[sub_index]['end']:
+                    sub_index += 1
+            buff_windows[index][1] = add_index
+            buff_windows[index][3] = sub_index
+            prev_time = curr_time
+        #print(np.concatenate((time_windows, buff_windows), axis=1))
+
+        results = np.zeros(len(damage_tags))
+        cache = NIKKE.generate_cache([])
+        for (t_0, t_1), (add_s, add_e, sub_s, sub_e) in zip(time_windows, buff_windows):
+            # This operation can only occur O(N) times in total
+            if add_e > add_s:
+                cache.add_buffs(add_buffs, add_s, add_e)
+            if sub_e > sub_s:
+                cache.remove_buffs(sub_buffs, sub_s, sub_e)
+
+            # Loop over all damage tags and begin accumulating the damage per window
+            for i, dmg_tag in enumerate(damage_tags):
+                damage = dmg_tag['damage']
+                tags = dmg_tag['tags']
+                start = dmg_tag['start']
+                duration = dmg_tag.get('duration', 0)
+                end = dmg_tag.get('end', start + duration if not math.isinf(duration) else math.inf)
+
+                # Shift the window until we are in a valid start time
+                if start >= t_1 or end < t_0:
+                    continue
+
+                total_dmg = NIKKE.accumulate_avg_dmg(
+                    damage,
+                    attack,
+                    defense,
+                    None,
+                    tags,
+                    normalize=normalize,
+                    cache=cache
+                )
+
+                # Determine, based on duration, whether or not to multiply
+                duration = min(end, t_1) - max(start, t_0) if duration != 0 else 0
+                if duration > 0:
+                    results[i] += total_dmg * duration
+                else:
+                    results[i] += total_dmg
+        return np.sum(results) if accumulate else results
+
+    @staticmethod
+    def compute_dps_window_n2(
+            damage_tags: list,
+            attack: float,
+            defense: float,
+            buffs: list,
+            window_start: float = -math.inf,
+            window_end: float = math.inf,
+            accumulate: bool = True,
+            normalize: bool = True) -> float:
+        """Uses start and end times in the buff iist to estimate damage.
+        
+        damage_tags specifies the damage to sum over and the associated
+        bonuses from core hits, full burst, etc., and in what duration
+        window they apply.
+
+        normalize is passed to the accumulate function.
+
+        accumulate when True will sum the final result as a single float.
+
+        window_start manually specifies the minimum time to analyaze from.
+
+        window_end manually specifies the maximum time to analyze towards.
+
+        This is the O(N^2) variant of the algorithm, which tends to
+        perform better at N < 800.
         """
         # Start by searching through the buff list to determine timeline
-        time_points = np.array([])
-        if not math.isinf(window_start):
-            time_points = np.append(time_points, window_start)
-        if not math.isinf(window_end):
-            time_points = np.append(time_points, window_end)
-        for buff in buffs:
-            start = buff['start']
-            end = buff['end']
-            if not math.isinf(start) \
-                    and window_start < start < window_end \
-                    and start not in time_points:
-                time_points = np.append(time_points, start)
-            if not math.isinf(end) \
-                    and window_start < end < window_end \
-                    and end not in time_points:
-                time_points = np.append(time_points, end)
+        time_points = NIKKE.get_unique_times(buffs, window_start, window_end)
 
         # Sort the timeline in chronological order
         time_points = np.sort(time_points)
@@ -659,6 +655,7 @@ class NIKKE:
 
         # Loop over all damage tags and begin accumulating the damage per window
         results = np.zeros(len(damage_tags))
+        caches = [None] * len(buff_windows)
         for i, dmg_tag in enumerate(damage_tags):
             damage = dmg_tag['damage']
             tags = dmg_tag['tags']
@@ -675,13 +672,15 @@ class NIKKE:
                 if end < t_0:
                     break
 
+                cache = NIKKE.generate_cache(window) if caches[i] is None else cache[i]
                 total_dmg = NIKKE.accumulate_avg_dmg(
                     damage,
                     attack,
                     defense,
-                    window,
+                    None,
                     tags,
-                    normalize
+                    normalize=normalize,
+                    cache=cache
                 )
 
                 # Determine, based on duration, whether or not to multiply
@@ -690,10 +689,30 @@ class NIKKE:
                     results[i] += total_dmg * duration
                 else:
                     results[i] += total_dmg
-
-                start = t_1
         return np.sum(results) if accumulate else results
 
+    @staticmethod
+    def compute_dps_window(
+            damage_tags: list,
+            attack: float,
+            defense: float,
+            buffs: list,
+            window_start: float = -math.inf,
+            window_end: float = math.inf,
+            accumulate: bool = True,
+            normalize: bool = True) -> float:
+        """Forwards the DPS computation parameters to the O(NlogN) or the
+        O(N^2) algorithm based on the length of buffs.
+        
+        The O(N^2) algorithm tends to perform more consistently and better
+        at N < 800, so even though the O(NlogN) algorithm has a better
+        runtime analysis, in practice the O(N^2) algorithm is preferred.
+        """
+        if len(buffs) >= 800:
+            return NIKKE.compute_dps_window_nlogn(damage_tags, attack, defense, buffs,
+                window_start, window_end, accumulate, normalize)
+        return NIKKE.compute_dps_window_n2(damage_tags, attack, defense, buffs,
+            window_start, window_end, accumulate, normalize)
 
     @staticmethod
     def compare_element(source: str, target: str) -> bool:
@@ -708,11 +727,11 @@ class NIKKE:
         return NIKKE.element_table[source] == target
 
 
-class Helpers:
+class Examples:
     """Namespace for helper functions specific to this script."""
     @staticmethod
     def compute_normal_attack_dps(
-            config: NIKKE.Config,
+            config: NIKKEConfig,
             nikke_name: str,
             damage: float = None,
             ammo: float = 0.0,
@@ -733,7 +752,7 @@ class Helpers:
         message = f'{nikke_name} {atk_name} DPS: {dps:,.2f} / {peak:,.2f} ({ratio:,.2f}%)'
 
         if log:
-            Util.get_logger('NIKKE_Logger').info(message)
+            NIKKEUtil.get_logger('NIKKE_Logger').info(message)
 
         # Add a plot for this graph
         if graph:
@@ -763,7 +782,7 @@ class Helpers:
         dmg_cache = NIKKE.generate_cache(buffs)
         values = NIKKE.compute_damage(damage, attack, defense, cache=dmg_cache)
         if log:
-            logger = Util.get_logger('NIKKE_Logger')
+            logger = NIKKEUtil.get_logger('NIKKE_Logger')
             msg = f'Scarlet burst damage based on the following stats:\
                 \n  - ATK: {attack}\
                 \n  - Enemy DEF: {defense}\
@@ -787,8 +806,8 @@ class Helpers:
             relative_name: str = None,
             verbose=False) -> float:
         """Returns the average DPS of a NIKKE."""
-        logger = Util.get_logger('NIKKE_Logger')
-        total_avg_dmg = NIKKE.compute_dps_window(
+        logger = NIKKEUtil.get_logger('NIKKE_Logger')
+        total_avg_dmg = NIKKE.compute_dps_window_n2(
             damage_tags=damage_tags,
             attack=attack,
             defense=defense,
@@ -816,8 +835,8 @@ class Helpers:
 
 def main() -> int:
     """Main function."""
-    logger = Util.get_logger('NIKKE_Logger')
-    config = NIKKE.Config()
+    logger = NIKKEUtil.get_logger('NIKKE_Logger')
+    config = NIKKEConfig()
     params = {
         'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
         'attack': config.get_nikke_attack('Modernia'),
@@ -857,22 +876,22 @@ def main() -> int:
     logger.debug(mod_buffs)
 
     logger.info('=======================================================')
-    Helpers.compute_actual_damage(**params, buffs=scar_buffs)
+    Examples.compute_actual_damage(**params, buffs=scar_buffs)
     logger.info('=======================================================')
-    scar_n = Helpers.compute_normal_attack_dps(
+    scar_n = Examples.compute_normal_attack_dps(
         config, 'Scarlet', ammo=ammo, graph=False)
-    sw_n = Helpers.compute_normal_attack_dps(
+    sw_n = Examples.compute_normal_attack_dps(
         config, 'Snow White', ammo=0, graph=False)
-    mod_n = Helpers.compute_normal_attack_dps(
+    mod_n = Examples.compute_normal_attack_dps(
         config, 'Modernia', graph=False,
         ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+ammo)
-    mod_s1 = Helpers.compute_normal_attack_dps(
+    mod_s1 = Examples.compute_normal_attack_dps(
         config, 'Modernia', graph=False, atk_name='S1',
         damage=config.config['nikkes']['Modernia']['skill_1']['effect']['damage'],
         ammo=config.config['nikkes']['Modernia']['skill_1']['effect']['ammo']*5+ammo)
-    max_n = Helpers.compute_normal_attack_dps(
+    max_n = Examples.compute_normal_attack_dps(
         config, 'Maxwell', ammo=ammo, graph=False)
-    alice_n = Helpers.compute_normal_attack_dps(
+    alice_n = Examples.compute_normal_attack_dps(
         config, 'Alice', ammo=ammo, graph=False)
     logger.info('=======================================================')
 
@@ -898,7 +917,7 @@ def main() -> int:
     }
 
     # Scarlet attack dps calculation
-    scar_avg_dps = Helpers.compute_nikke_dps(
+    scar_avg_dps = Examples.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': config.config['nikkes']['Scarlet']['burst']['effect'][1]['damage'],
@@ -923,7 +942,7 @@ def main() -> int:
     )
 
     # Modernia attack dps calculation
-    Helpers.compute_nikke_dps(
+    Examples.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': mod_n,
@@ -1018,7 +1037,7 @@ def main() -> int:
             'duration': 0,
             'tags': {'base': 1.0},
         })
-    Helpers.compute_nikke_dps(
+    Examples.compute_nikke_dps(
         damage_tags=sw_dmg_tags,
         attack=config.get_nikke_attack('Snow White'),
         defense=config.get_enemy_defense('special_interception'),
@@ -1030,7 +1049,7 @@ def main() -> int:
         relative_name='Scarlet',
         verbose=False
     )
-    Helpers.compute_nikke_dps(
+    Examples.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': 813.42 * 3,
@@ -1055,7 +1074,7 @@ def main() -> int:
         relative_name='Scarlet',
         verbose=False
     )
-    Helpers.compute_nikke_dps(
+    Examples.compute_nikke_dps(
         damage_tags=alice_dmg_tags,
         attack=config.get_nikke_attack('Maxwell'),
         defense=config.get_enemy_defense('special_interception'),
@@ -1101,7 +1120,7 @@ def main() -> int:
     mod_buffs = base_buffs + config.get_buff_list()
 
     logger.info('=======================================================')
-    Helpers.compute_nikke_dps(
+    Examples.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': scar_n,
@@ -1128,7 +1147,7 @@ def main() -> int:
     )
     mod_b = 2.24 * 2 * NIKKE.weapon_table['MG']['attack_speed']
     mod_s1_b = 3.05 * NIKKE.weapon_table['MG']['attack_speed']
-    Helpers.compute_nikke_dps(
+    Examples.compute_nikke_dps(
         damage_tags=[
             {
                 'damage': mod_b,
