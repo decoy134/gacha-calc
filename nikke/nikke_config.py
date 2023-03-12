@@ -64,6 +64,7 @@ class NIKKEConfig:
                 ret += item
             else:
                 ret.append(item)
+        self.clear_buffs()
         return ret
 
     def get_normal_params(self, name: str) -> dict:
@@ -153,10 +154,10 @@ class NIKKEConfig:
                 length = depth
             self.buffs[key] = []
             for i in range(length):
-                if effect[i]['type'] == 'buff':
+                if effect[i]['type'].endswith('buff'):
                     self.buffs[key].append(NIKKEConfig.update_effect_duration(
                         copy.deepcopy(effect[i]), start, duration))
-        elif effect['type'] == 'buff':
+        elif effect['type'].endswith('buff'):
             self.buffs[key] = NIKKEConfig.update_effect_duration(
                 copy.deepcopy(effect), start, duration)
 

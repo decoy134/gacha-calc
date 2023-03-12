@@ -1,6 +1,7 @@
 """Module nikke_dmg for computing the DPS of various NIKKE combinations."""
 
 import copy
+import time
 import math
 
 import matplotlib
@@ -646,33 +647,28 @@ class NIKKE:
         for t_1 in time_points:
             if t_0 >= t_1:
                 continue
-            window = []
-            for buff in buffs:
-                if t_0 >= buff['start'] and t_0 < buff['end']:
-                    window.append(buff)
-            buff_windows.append((t_0, t_1, window))
+            buff_windows.append((t_0, t_1))
             t_0 = t_1
 
         # Loop over all damage tags and begin accumulating the damage per window
         results = np.zeros(len(damage_tags))
-        caches = [None] * len(buff_windows)
-        for i, dmg_tag in enumerate(damage_tags):
-            damage = dmg_tag['damage']
-            tags = dmg_tag['tags']
-            start = dmg_tag['start']
-            duration = dmg_tag.get('duration', 0)
-            end = dmg_tag.get('end', start + duration if not math.isinf(duration) else math.inf)
-
-            # Timeline loop - t0 is the inclusive current time and t1 is non-inclusive the end time
-            for t_0, t_1, window in buff_windows:
+        # Timeline loop - t0 is the inclusive current time and t1 is non-inclusive the end time
+        for t_0, t_1 in buff_windows:
+            window = []
+            for buff in buffs:
+                if t_0 >= buff['start'] and t_0 < buff['end']:
+                    window.append(buff)
+            cache = NIKKE.generate_cache(window)
+            for i, dmg_tag in enumerate(damage_tags):
+                damage = dmg_tag['damage']
+                tags = dmg_tag['tags']
+                start = dmg_tag['start']
+                duration = dmg_tag.get('duration', 0)
+                end = dmg_tag.get('end', start + duration if not math.isinf(duration) else math.inf)
                 # Shift the window until we are in a valid start time
-                if start >= t_1:
+                if start >= t_1 or end < t_0:
                     continue
-                # Break if the window start exceeds the end time
-                if end < t_0:
-                    break
 
-                cache = NIKKE.generate_cache(window) if caches[i] is None else cache[i]
                 total_dmg = NIKKE.accumulate_avg_dmg(
                     damage,
                     attack,
@@ -713,6 +709,39 @@ class NIKKE:
                 window_start, window_end, accumulate, normalize)
         return NIKKE.compute_dps_window_n2(damage_tags, attack, defense, buffs,
             window_start, window_end, accumulate, normalize)
+
+
+    @staticmethod
+    def compare_dps_window_alg(
+            damage_tags: list,
+            attack: float,
+            defense: float,
+            buffs: list,
+            window_start: float = -math.inf,
+            window_end: float = math.inf,
+            accumulate: bool = True,
+            normalize: bool = True) -> float:
+        """Compares the performance of the O(N^2) algorithm versus the
+        O(NlogN) algorithm for the given parameters.
+        """
+        logger = NIKKEUtil.get_logger('NIKKE_logger')
+        start_nlogn = time.time()
+        result_nlogn = NIKKE.compute_dps_window_nlogn(damage_tags, attack, defense, buffs,
+                 window_start, window_end, accumulate, normalize)
+        nlogn_time = (time.time() - start_nlogn) * 1000
+
+        start_n2 = time.time()
+        result_n2 = NIKKE.compute_dps_window_n2(damage_tags, attack, defense, buffs,
+            window_start, window_end, accumulate, normalize)
+        n2_time = (time.time() - start_n2) * 1000
+
+        if not math.isclose(result_nlogn, result_n2):
+            logger.error('O(N^2) and O(NlogN) algorithms did not return the same reuslt!')
+
+        diff = abs(nlogn_time - n2_time)
+        name = 'n2' if n2_time < nlogn_time else 'nlogn'
+        logger.debug(f'{n2_time=:.3f} ms vs {nlogn_time=:.3f} ms ({name} faster by {diff:.3f} ms)')
+        return result_n2
 
     @staticmethod
     def compare_element(source: str, target: str) -> bool:
@@ -850,6 +879,7 @@ def main() -> int:
     for start in burst_times:
         config.add_skill_1('Liter', start=start-0.5, depth=3)
         config.add_burst('Liter', start=start-0.5)
+        config.add_skill_1('Privaty', start=start)
         config.add_burst('Novel', start=start+1.5)
         base_buffs += config.get_buff_list()
         base_buffs.append({
@@ -858,7 +888,6 @@ def main() -> int:
             'end': start + 10,
             'duration': 10
         })
-        config.clear_buffs()
 
     # Scarlet buffs
     for _ in range(5):
@@ -866,13 +895,20 @@ def main() -> int:
     config.add_skill_2('Scarlet', duration=math.inf)
     config.add_burst('Scarlet', start=burst_times[0])
     scar_buffs = base_buffs + config.get_buff_list()
-    config.clear_buffs()
 
     # Modernia buffs
     for _ in range(5):
         config.add_skill_1('Modernia', duration=math.inf)
     config.add_skill_2('Modernia', duration=math.inf)
     mod_buffs = base_buffs + config.get_buff_list()
+
+    # Julia buffs
+    for _ in range(5):
+        config.add_skill_2('Julia', duration=math.inf)
+    config.add_skill_1('Julia', start=0)
+    julia_buffs = base_buffs + config.get_buff_list()
+    config.add_skill_1('Julia', start=20)
+    julia_buffs = julia_buffs + config.get_buff_list()
 
     logger.info('=======================================================')
     Examples.compute_actual_damage(**params, buffs=scar_buffs)
@@ -892,6 +928,8 @@ def main() -> int:
         config, 'Maxwell', ammo=ammo, graph=False)
     alice_n = Examples.compute_normal_attack_dps(
         config, 'Alice', ammo=ammo, graph=False)
+    julia_n = Examples.compute_normal_attack_dps(
+        config, 'Julia', ammo=ammo, graph=False)
     logger.info('=======================================================')
 
     # Set up weapon tags
@@ -966,12 +1004,43 @@ def main() -> int:
         relative_name='Scarlet'
     )
 
+    # Julia attack dps calculation
+    Examples.compute_nikke_dps(
+        damage_tags=[
+            {
+                'damage': julia_n,
+                'start': -math.inf,
+                'duration': math.inf,
+                'tags': ar_tag_profile,
+            },
+            {
+                'damage': config.config['nikkes']['Julia']['burst']['effect'][0]['damage'],
+                'start': burst_times[-1] - 0.1,
+                'duration': 0,
+                'tags': {mod_s1_tag: 1.0},
+            },
+            {
+                'damage': config.config['nikkes']['Julia']['burst']['effect'][1]['damage'],
+                'start': burst_times[0],
+                'duration': 0,
+                'tags': {mod_s1_tag: 1.0},
+            },
+        ],
+        attack=config.get_nikke_attack('Modernia'),
+        defense=config.get_enemy_defense('special_interception'),
+        buffs=julia_buffs,
+        window_start=0,
+        window_end=burst_times[-1],
+        name='Julia',
+        relative_dps=scar_avg_dps,
+        relative_name='Scarlet'
+    )
+
     # Snow White, Maxwell, and Alice Calculation
     mx_buffs = base_buffs
     for start in burst_times:
         config.add_skill_1('Maxwell', start=start)
         mx_buffs = mx_buffs + config.get_buff_list()
-        config.clear_buffs()
 
     alice_dmg_tags = [
         {
@@ -989,7 +1058,6 @@ def main() -> int:
     ]
     config.add_burst('Alice', start=burst_times[0])
     alice_buffs = mx_buffs + config.get_buff_list()
-    config.clear_buffs()
 
     reload_t = 1.5*(1 - NIKKE.cube_table['reload'][2] / 100.0)
     b_fire_t = burst_times[0] + 4.0
@@ -999,7 +1067,6 @@ def main() -> int:
     config.add_skill_2('Snow White', start=burst_times[0]+2)
     config.add_skill_1('Snow White', start=s1_trigger_t, duration=math.inf)
     sw_buffs = mx_buffs + config.get_buff_list()
-    config.clear_buffs()
     config.add_skill_2('Snow White', start=burst_times[0]+17)
     sw_buffs = sw_buffs + config.get_buff_list()
 
@@ -1038,7 +1105,7 @@ def main() -> int:
         })
     Examples.compute_nikke_dps(
         damage_tags=sw_dmg_tags,
-        attack=config.get_nikke_attack('Snow White'),
+        attack=config.get_nikke_attack('Maxwell'),
         defense=config.get_enemy_defense('special_interception'),
         buffs=sw_buffs,
         window_start=0,
@@ -1102,7 +1169,6 @@ def main() -> int:
             'end': start + duration,
             'duration': duration
         })
-        config.clear_buffs()
 
     # Scarlet buffs
     for _ in range(5):
@@ -1110,7 +1176,6 @@ def main() -> int:
     config.add_skill_2('Scarlet', duration=math.inf)
     config.add_burst('Scarlet', start=burst_times[1])
     scar_buffs = base_buffs + config.get_buff_list()
-    config.clear_buffs()
 
     # Modernia buffs
     for _ in range(5):

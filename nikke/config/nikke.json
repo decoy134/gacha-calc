@@ -15,7 +15,7 @@
             "skill_1": {
                 "type": "stacking_buff",
                 "target": "self",
-                "stack": 5,
+                "max_stacks": 5,
                 "effect": {
                     "type": "buff",
                     "health": -4.01,
@@ -381,6 +381,55 @@
                 }
             }
         },
+        "Privaty": {
+            "element": "iron",
+            "max_health": 1055833,
+            "attack": 44781,
+            "defense": 6409,
+            "role": "attacker",
+            "manufacturer": "elysion",
+            "weapon": "AR",
+            "ammo": 60,
+            "normal": 13.65,
+            "reload": 1,
+            "skill_1": {
+                "type": "conditional_buff",
+                "target": "allies",
+                "effect": {
+                    "type": "buff",
+                    "attack": 22.0,
+                    "reload": 41.73,
+                    "ammo": -50.66,
+                    "duration": 10
+                }
+            },
+            "skill_2": {
+                "type": "conditional_damage",
+                "target": "enemies",
+                "effect": [
+                    {
+                        "type": "damage",
+                        "target": "enemies",
+                        "damage": 66.3
+                    },
+                    {
+                        "type": "conditional_damage",
+                        "target": "enemies",
+                        "damage": 841.5
+                    }
+                ]
+            },
+            "burst": {
+                "type": "damage",
+                "target": "enemies",
+                "effect": {
+                    "type": "initial_damage",
+                    "target": "enemies",
+                    "damage": 333,
+                    "stun": 3
+                }
+            }
+        },
         "Alice": {
             "element": "fire",
             "max_health": 1055833,
@@ -416,6 +465,53 @@
                     "charge_speed": 80.15,
                     "duration": 10
                 }
+            }
+        },
+        "Julia": {
+            "element": "iron",
+            "max_health": 1055833,
+            "attack": 44781,
+            "defense": 6409,
+            "role": "attacker",
+            "manufacturer": "missilis",
+            "weapon": "AR",
+            "ammo": 60,
+            "normal": 14.07,
+            "reload": 1.2,
+            "skill_1": {
+                "type": "buff",
+                "target": "self",
+                "effect": {
+                    "type": "buff",
+                    "crit_rate": 26.04,
+                    "duration": 10
+                }
+            },
+            "skill_2": {
+                "type": "stacking_buff",
+                "target": "self",
+                "max_stacks": 5,
+                "effect": {
+                    "type": "buff",
+                    "crit_dmg": 24.79,
+                    "duration": 15
+                }
+            },
+            "burst": {
+                "type": "damage",
+                "target": "enemies",
+                "effect": [
+                    {
+                        "type": "initial_damage",
+                        "target": "enemies",
+                        "damage": 554.5
+                    },
+                    {
+                        "type": "extra_damage",
+                        "target": "enemies",
+                        "damage": 554.5
+                    }
+                ]
             }
         }
     },
